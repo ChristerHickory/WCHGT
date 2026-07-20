@@ -1,0 +1,115 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* === WCHGT Vintage Golf Palette === */
+    /* Mörkgrön + guld + cremevit */
+
+    --background: 150 25% 8%;
+    --foreground: 45 30% 90%;
+
+    --card: 150 22% 11%;
+    --card-foreground: 45 30% 90%;
+
+    --popover: 150 22% 11%;
+    --popover-foreground: 45 30% 90%;
+
+    --primary: 43 85% 52%;
+    --primary-foreground: 150 25% 8%;
+
+    --secondary: 150 20% 16%;
+    --secondary-foreground: 45 25% 80%;
+
+    --muted: 150 15% 14%;
+    --muted-foreground: 45 15% 55%;
+
+    --accent: 43 85% 52%;
+    --accent-foreground: 150 25% 8%;
+
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 45 30% 90%;
+
+    --border: 150 15% 20%;
+    --input: 150 15% 18%;
+    --ring: 43 85% 52%;
+
+    --radius: 0.375rem;
+
+    /* Anpassade tokens */
+    --color-gold: #C9A227;
+    --color-gold-light: #E8C44A;
+    --color-green-dark: #0D1F14;
+    --color-green-mid: #1A3322;
+    --color-green-light: #224433;
+    --color-cream: #F5EDD8;
+    --color-cream-muted: #C8BFA0;
+    --font-display: 'Playfair Display', Georgia, serif;
+    --font-body: 'Source Sans 3', 'Helvetica Neue', sans-serif;
+  }
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-body);
+  background-color: var(--color-green-dark);
+  color: var(--color-cream);
+  min-height: 100dvh;
+  line-height: 1.6;
+}
+
+/* Gold divider */
+.gold-divider {
+  border: none;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--color-gold), transparent);
+  margin: 1.5rem 0;
+}
+
+/* Vintage heading */
+.heading-display {
+  font-family: var(--font-display);
+  color: var(--color-gold);
+  letter-spacing: 0.02em;
+}
+
+/* Gold badge */
+.badge-gold {
+  background: linear-gradient(135deg, var(--color-gold), var(--color-gold-light));
+  color: var(--color-green-dark);
+  font-weight: 600;
+  font-size: 0.75rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 9999px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* Card vintage */
+.card-vintage {
+  background: var(--color-green-mid);
+  border: 1px solid rgba(201, 162, 39, 0.2);
+  border-radius: 0.5rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.card-vintage:hover {
+  border-color: rgba(201, 162, 39, 0.5);
+  box-shadow: 0 4px 20px rgba(201, 162, 39, 0.08);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--color-green-dark); }
+::-webkit-scrollbar-thumb { background: var(--color-green-light); border-radius: 3px; }
