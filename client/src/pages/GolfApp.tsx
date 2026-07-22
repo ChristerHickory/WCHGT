@@ -42,19 +42,19 @@ function TabBar({ active, setActive }: { active: Tab; setActive: (t: Tab) => voi
 
 function Ledartavla() {
   const { data: oom, isLoading } = useQuery<{ golfare: Golfare; nettoPoang: number; bruttoPoang: number; antalTavlingar: number }[]>({ queryKey: ["/api/order-of-merit"] });
-  const [visaTyp, setVisaTyp] = useState<"netto" | "brutto">("netto");
-  const sorterad = oom ? [...oom].sort((a, b) => visaTyp === "netto" ? b.nettoPoang - a.nettoPoang : b.bruttoPoang - a.bruttoPoang) : [];
+  const [visaTyp, setVisaTyp] = useState<"brutto" | "netto">("brutto");
+  const sorterad = oom ? [...oom].sort((a, b) => visaTyp === "brutto" ? b.bruttoPoang - a.bruttoPoang : b.nettoPoang - a.nettoPoang) : [];
 
   return (
     <div className="p-4">
       <div className="flex items-center justify-between mb-4">
         <h2 className="heading-display text-lg">Order of Merit 2026</h2>
         <div className="flex rounded overflow-hidden border" style={{ borderColor: "rgba(201,162,39,0.4)" }}>
-          {(["netto","brutto"] as const).map(typ => (
+          {(["brutto", "netto"] as const).map(typ => (
             <button key={typ} onClick={() => setVisaTyp(typ)}
               className="px-4 py-1.5 text-xs font-semibold transition-colors"
               style={{ background: visaTyp === typ ? "var(--color-gold)" : "transparent", color: visaTyp === typ ? "var(--color-green-dark)" : "var(--color-gold)" }}>
-              {typ === "netto" ? "Netto" : "Brutto"}
+              {typ === "brutto" ? "Brutto" : "Netto"}
             </button>
           ))}
         </div>
@@ -71,8 +71,8 @@ function Ledartavla() {
               </tr>
             </thead>
             <tbody>
-              {sorterad.filter(r => (visaTyp === "netto" ? r.nettoPoang : r.bruttoPoang) > 0).map((r, i) => {
-                const poang = visaTyp === "netto" ? r.nettoPoang : r.bruttoPoang;
+              {sorterad.filter(r => (visaTyp === "brutto" ? r.bruttoPoang : r.nettoPoang) > 0).map((r, i) => {
+                const poang = visaTyp === "brutto" ? r.bruttoPoang : r.nettoPoang;
                 return (
                   <tr key={r.golfare.id} style={{ borderBottom: "1px solid rgba(201,162,39,0.06)", background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.02)" }}>
                     <td className="px-3 py-2 font-bold text-sm" style={{ color: i < 3 ? "var(--color-gold)" : "var(--color-cream-muted)" }}>{i < 3 ? ["🥇","🥈","🥉"][i] : `${i+1}.`}</td>

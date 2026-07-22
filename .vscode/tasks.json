@@ -42,6 +42,17 @@
 			"command": "C:\\Users\\Oldti\\Desktop\\wchgt\\run-dev.cmd",
 			"isBackground": true,
 			"problemMatcher": []
+		},
+		{
+			"label": "tmp-git-commit",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/d",
+				"/c",
+				"cd /d c:\\Users\\Oldti\\Desktop\\wchgt && git add -A && git commit -m \"Import Marks GK results and finalize OoM/KPI updates\""
+			],
+			"isBackground": false
 		}
 	]
 }

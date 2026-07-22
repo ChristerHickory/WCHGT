@@ -1,8 +1,22 @@
-import { useState } from "react";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
-import type { Golfare, Tavling, Reportage } from "@shared/schema";
+import type { Golfare, Tavling, Reportage, Tavlingsresultat } from "@shared/schema";
 import { capitalize } from "@/lib/utils";
+
+type OomRow = {
+  golfare: Golfare;
+  nettoPoang: number;
+  bruttoPoang: number;
+  antalTavlingar: number;
+};
+
+type Klattrare = {
+  namn: string;
+  from: number;
+  to: number;
+  delta: number;
+};
 
 function HeroSection() {
   return (
@@ -58,76 +72,184 @@ function HeroSection() {
   );
 }
 
-function OrderOfMeritSection() {
-  const { data: oom, isLoading } = useQuery<{ golfare: Golfare; nettoPoang: number; bruttoPoang: number; antalTavlingar: number }[]>({
-    queryKey: ["/api/order-of-merit"],
-  });
-  const [aktiv, setAktiv] = useState<"netto" | "brutto">("netto");
+function KpiNarrativ() {
+  const { data: oom } = useQuery<OomRow[]>({ queryKey: ["/api/order-of-merit"] });
+  const { data: tavlingar } = useQuery<Tavling[]>({ queryKey: ["/api/tavlingar"] });
 
-  const sorterad = oom ? [...oom].sort((a, b) =>
-    aktiv === "netto" ? b.nettoPoang - a.nettoPoang : b.bruttoPoang - a.bruttoPoang
-  ) : [];
+  const avslutadeWcs = useMemo(
+    () => (tavlingar ?? []).filter((t) => t.arOrderOfMerit && t.avslutad).sort((a, b) => a.datum.localeCompare(b.datum)),
+    [tavlingar],
+  );
+
+  const senasteTavling = avslutadeWcs.length > 0 ? avslutadeWcs[avslutadeWcs.length - 1] : null;
+
+  const { data: senasteResultat } = useQuery<Tavlingsresultat[]>({
+    queryKey: ["/api/tavlingar", senasteTavling?.id, "resultat"],
+    enabled: Boolean(senasteTavling?.id),
+  });
+
+  const top3Brutto = useMemo(
+    () => [...(oom ?? [])].sort((a, b) => b.bruttoPoang - a.bruttoPoang).slice(0, 3),
+    [oom],
+  );
+
+  const top3Netto = useMemo(
+    () => [...(oom ?? [])].sort((a, b) => b.nettoPoang - a.nettoPoang).slice(0, 3),
+    [oom],
+  );
+
+  const nettoVinnare = useMemo(() => {
+    if (!senasteResultat) return null;
+    return [...senasteResultat]
+      .filter((r) => r.placering != null && r.nettoscore != null)
+      .sort((a, b) => (a.placering ?? 999) - (b.placering ?? 999))[0] ?? null;
+  }, [senasteResultat]);
+
+  const bruttoVinnare = useMemo(() => {
+    if (!senasteResultat) return null;
+    return [...senasteResultat]
+      .filter((r) => r.bruttoPlacering != null && r.bruttoscore != null)
+      .sort((a, b) => (a.bruttoPlacering ?? 999) - (b.bruttoPlacering ?? 999))[0] ?? null;
+  }, [senasteResultat]);
+
+  const rankChanges = useMemo(() => {
+    if (!oom || !senasteResultat || senasteResultat.length === 0) {
+      return {
+        brutto: [] as Klattrare[],
+        netto: [] as Klattrare[],
+      };
+    }
+
+    const buildClimbers = (typ: "brutto" | "netto"): Klattrare[] => {
+      const deltaMap = new Map<number, number>();
+      for (const r of senasteResultat) {
+        deltaMap.set(
+          r.golfareId,
+          typ === "brutto" ? (r.bruttoOmPoang ?? 0) : (r.orderOfMeritPoang ?? 0),
+        );
+      }
+
+      const nowRows = oom.map((row) => ({
+        id: row.golfare.id,
+        namn: capitalize(row.golfare.namn),
+        poang: typ === "brutto" ? row.bruttoPoang : row.nettoPoang,
+      }));
+
+      const prevRows = nowRows.map((row) => ({
+        ...row,
+        poang: row.poang - (deltaMap.get(row.id) ?? 0),
+      }));
+
+      const nowRank = new Map<number, number>();
+      [...nowRows]
+        .sort((a, b) => b.poang - a.poang)
+        .forEach((row, idx) => nowRank.set(row.id, idx + 1));
+
+      const prevRank = new Map<number, number>();
+      [...prevRows]
+        .sort((a, b) => b.poang - a.poang)
+        .forEach((row, idx) => prevRank.set(row.id, idx + 1));
+
+      return nowRows
+        .map((row) => {
+          const to = nowRank.get(row.id) ?? 999;
+          const from = prevRank.get(row.id) ?? 999;
+          return {
+            namn: row.namn,
+            from,
+            to,
+            delta: from - to,
+          };
+        })
+        .filter((row) => row.delta > 0)
+        .sort((a, b) => b.delta - a.delta || a.to - b.to)
+        .slice(0, 3);
+    };
+
+    return {
+      brutto: buildClimbers("brutto"),
+      netto: buildClimbers("netto"),
+    };
+  }, [oom, senasteResultat]);
+
+  const golfareNamn = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const row of oom ?? []) {
+      map.set(row.golfare.id, capitalize(row.golfare.namn));
+    }
+    return map;
+  }, [oom]);
+
+  const totaltWcs = (tavlingar ?? []).filter((t) => t.arOrderOfMerit).length;
+  const speladeWcs = avslutadeWcs.length;
 
   return (
     <section className="max-w-6xl mx-auto px-4 py-12">
-      <div className="flex items-center justify-between mb-5">
-        <h2 className="heading-display text-xl">Order of Merit 2026</h2>
-        <Link href="/app">
-          <span className="text-sm cursor-pointer" style={{ color: "var(--color-gold)" }}>Alla resultat →</span>
-        </Link>
-      </div>
+      <div className="card-vintage p-6 md:p-8">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+          <h2 className="heading-display text-xl">Säsongen i siffror</h2>
+          <Link href="/order-of-merit">
+            <span className="text-sm cursor-pointer" style={{ color: "var(--color-gold)" }}>
+              Se hela Order of Merit →
+            </span>
+          </Link>
+        </div>
 
-      {/* Brutto/Netto-flikar */}
-      <div className="flex gap-0 mb-4 rounded overflow-hidden border" style={{ borderColor: "rgba(201,162,39,0.3)", display: "inline-flex" }}>
-        {(["netto", "brutto"] as const).map(typ => (
-          <button
-            key={typ}
-            onClick={() => setAktiv(typ)}
-            data-testid={`tab-oom-${typ}`}
-            className="px-5 py-2 text-sm font-semibold transition-colors"
-            style={{
-              background: aktiv === typ ? "var(--color-gold)" : "transparent",
-              color: aktiv === typ ? "var(--color-green-dark)" : "var(--color-gold)",
-            }}
-          >
-            {typ === "netto" ? "Netto" : "Brutto"}
-          </button>
-        ))}
-      </div>
+        <div className="space-y-3 text-sm md:text-base" style={{ color: "var(--color-cream-muted)" }}>
+          <p>
+            Hittills har vi spelat <strong style={{ color: "var(--color-cream)" }}>{speladeWcs}</strong> av totalt <strong style={{ color: "var(--color-cream)" }}>{totaltWcs}</strong> planerade WCS-tävlingar.
+          </p>
 
-      <div className="card-vintage overflow-hidden">
-        <table className="w-full text-sm" data-testid="table-order-of-merit">
-          <thead>
-            <tr style={{ borderBottom: "1px solid rgba(201,162,39,0.2)" }}>
-              <th className="text-left px-4 py-3 font-semibold" style={{ color: "var(--color-gold)", fontFamily: "var(--font-body)" }}>#</th>
-              <th className="text-left px-4 py-3 font-semibold" style={{ color: "var(--color-gold)", fontFamily: "var(--font-body)" }}>Golfare</th>
-              <th className="text-left px-4 py-3 font-semibold hidden sm:table-cell" style={{ color: "var(--color-gold)", fontFamily: "var(--font-body)" }}>Klubb</th>
-              <th className="text-right px-4 py-3 font-semibold hidden sm:table-cell" style={{ color: "var(--color-gold)", fontFamily: "var(--font-body)" }}>Tävlingar</th>
-              <th className="text-right px-4 py-3 font-semibold" style={{ color: "var(--color-gold)", fontFamily: "var(--font-body)" }}>Poäng</th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? (
-              <tr><td colSpan={5} className="text-center py-8" style={{ color: "var(--color-cream-muted)" }}>Laddar...</td></tr>
-            ) : sorterad.map((row, i) => (
-              <tr key={row.golfare.id} style={{ borderBottom: "1px solid rgba(201,162,39,0.08)" }} className="transition-colors hover:bg-white/5">
-                <td className="px-4 py-3 font-bold" style={{ color: i === 0 ? "var(--color-gold)" : "var(--color-cream-muted)" }}>
-                  {i === 0 ? "🏆" : i + 1}
-                </td>
-                <td className="px-4 py-3 font-medium" style={{ color: "var(--color-cream)" }}>
-                  <Link href={`/golfare/${row.golfare.id}`}>
-                    <span className="cursor-pointer hover:underline" style={{ color: "var(--color-cream)" }}>{capitalize(row.golfare.namn)}</span>
-                  </Link>
-                </td>
-                <td className="px-4 py-3 text-sm hidden sm:table-cell" style={{ color: "var(--color-cream-muted)" }}>{row.golfare.klubb ?? "–"}</td>
-                <td className="px-4 py-3 text-right hidden sm:table-cell" style={{ color: "var(--color-cream-muted)" }}>{row.antalTavlingar}</td>
-                <td className="px-4 py-3 text-right font-bold" style={{ color: "var(--color-gold)" }}>
-                  {aktiv === "netto" ? row.nettoPoang : row.bruttoPoang}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+          <p>
+            {senasteTavling && bruttoVinnare && nettoVinnare ? (
+              <>
+                Senast på <strong style={{ color: "var(--color-cream)" }}>{senasteTavling.namn}</strong> vann <strong style={{ color: "var(--color-cream)" }}>{golfareNamn.get(bruttoVinnare.golfareId) ?? `Golfare ${bruttoVinnare.golfareId}`}</strong> brutto, och nettosegern gick till <strong style={{ color: "var(--color-cream)" }}>{golfareNamn.get(nettoVinnare.golfareId) ?? `Golfare ${nettoVinnare.golfareId}`}</strong>.
+              </>
+            ) : (
+              <>När nästa tävling är färdigspelad visar vi här senaste brutto- och nettovinnare.</>
+            )}
+          </p>
+
+          <p>
+            {top3Brutto.length >= 3 ? (
+              <>
+                Topp 3 i OoM brutto är just nu <strong style={{ color: "var(--color-cream)" }}>{capitalize(top3Brutto[0].golfare.namn)}</strong>, <strong style={{ color: "var(--color-cream)" }}>{capitalize(top3Brutto[1].golfare.namn)}</strong> och <strong style={{ color: "var(--color-cream)" }}>{capitalize(top3Brutto[2].golfare.namn)}</strong>.
+              </>
+            ) : (
+              <>OoM brutto uppdateras löpande när fler resultat kommer in.</>
+            )}
+          </p>
+
+          <p>
+            {top3Netto.length >= 3 ? (
+              <>
+                Topp 3 i OoM netto är just nu <strong style={{ color: "var(--color-cream)" }}>{capitalize(top3Netto[0].golfare.namn)}</strong>, <strong style={{ color: "var(--color-cream)" }}>{capitalize(top3Netto[1].golfare.namn)}</strong> och <strong style={{ color: "var(--color-cream)" }}>{capitalize(top3Netto[2].golfare.namn)}</strong>.
+              </>
+            ) : (
+              <>OoM netto uppdateras löpande när fler resultat kommer in.</>
+            )}
+          </p>
+
+          <p>
+            {rankChanges.brutto.length > 0 ? (
+              <>
+                Största klättringarna i brutto sedan senaste tävlingen: {rankChanges.brutto.map((row) => `${row.namn} (från plats ${row.from} till ${row.to})`).join(", ")}.
+              </>
+            ) : (
+              <>Efter senaste tävlingen skedde inga större klättringar i brutto-tabellen.</>
+            )}
+          </p>
+
+          <p>
+            {rankChanges.netto.length > 0 ? (
+              <>
+                Största klättringarna i netto sedan senaste tävlingen: {rankChanges.netto.map((row) => `${row.namn} (från plats ${row.from} till ${row.to})`).join(", ")}.
+              </>
+            ) : (
+              <>Efter senaste tävlingen skedde inga större klättringar i netto-tabellen.</>
+            )}
+          </p>
+        </div>
       </div>
     </section>
   );
@@ -199,7 +321,7 @@ export default function Hem() {
   return (
     <div>
       <HeroSection />
-      <OrderOfMeritSection />
+      <KpiNarrativ />
       <KommandeTavlingar />
       <SenasteNyheter />
 

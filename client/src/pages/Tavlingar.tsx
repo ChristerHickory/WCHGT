@@ -118,7 +118,7 @@ function DatumBadge({ datum }: { datum: string }) {
 }
 
 function TavlingDetalj({ tavling, onBack }: { tavling: Tavling; onBack: () => void }) {
-  const [visaTyp, setVisaTyp] = useState<"netto" | "brutto">("netto");
+  const [visaTyp, setVisaTyp] = useState<"brutto" | "netto">("brutto");
 
   const { data: alleGolfare } = useQuery<Golfare[]>({ queryKey: ["/api/golfare/alla"] });
   const { data: resultat, isLoading } = useQuery<Tavlingsresultat[]>({
@@ -139,7 +139,7 @@ function TavlingDetalj({ tavling, onBack }: { tavling: Tavling; onBack: () => vo
         .sort((a, b) => (a.bruttoPlacering ?? 999) - (b.bruttoPlacering ?? 999))
     : [];
 
-  const visaLista = visaTyp === "netto" ? nettorankad : bruttorankad;
+  const visaLista = visaTyp === "brutto" ? bruttorankad : nettorankad;
   const harBrutto = bruttorankad.length > 0;
   const { dag, mån } = formatDatum(tavling.datum);
 
@@ -182,7 +182,7 @@ function TavlingDetalj({ tavling, onBack }: { tavling: Tavling; onBack: () => vo
       {/* Brutto / Netto-flikar */}
       {harBrutto && (
         <div className="flex mb-4 rounded overflow-hidden border w-fit" style={{ borderColor: "rgba(201,162,39,0.4)" }}>
-          {(["netto", "brutto"] as const).map(typ => (
+          {(["brutto", "netto"] as const).map(typ => (
             <button
               key={typ}
               onClick={() => setVisaTyp(typ)}
@@ -193,7 +193,7 @@ function TavlingDetalj({ tavling, onBack }: { tavling: Tavling; onBack: () => vo
                 color: visaTyp === typ ? "var(--color-green-dark)" : "var(--color-gold)",
               }}
             >
-              {typ === "netto" ? "Netto" : "Brutto"}
+              {typ === "brutto" ? "Brutto" : "Netto"}
             </button>
           ))}
         </div>
@@ -224,10 +224,10 @@ function TavlingDetalj({ tavling, onBack }: { tavling: Tavling; onBack: () => vo
             <tbody>
               {visaLista.map((r, i) => {
                 const g = golfareMap.get(r.golfareId);
-                const plac = visaTyp === "netto" ? r.placering : r.bruttoPlacering;
-                const prevPlac = i > 0 ? (visaTyp === "netto" ? visaLista[i-1].placering : visaLista[i-1].bruttoPlacering) : null;
+                const plac = visaTyp === "brutto" ? r.bruttoPlacering : r.placering;
+                const prevPlac = i > 0 ? (visaTyp === "brutto" ? visaLista[i-1].bruttoPlacering : visaLista[i-1].placering) : null;
                 const visaPlacText = plac === prevPlac ? "" : `${plac}.`;
-                const oomPoang = visaTyp === "netto" ? r.orderOfMeritPoang : r.bruttoOmPoang;
+                const oomPoang = visaTyp === "brutto" ? r.bruttoOmPoang : r.orderOfMeritPoang;
                 const top3 = i < 3 && (i === 0 || plac !== prevPlac);
                 const medalj = plac === 1 ? "🥇" : plac === 2 ? "🥈" : plac === 3 ? "🥉" : null;
 
@@ -256,7 +256,7 @@ function TavlingDetalj({ tavling, onBack }: { tavling: Tavling; onBack: () => vo
                       </td>
                     )}
                     <td className="px-4 py-3 text-right font-bold font-mono text-sm" style={{ color: top3 ? "var(--color-gold)" : "var(--color-cream)" }}>
-                      {visaTyp === "netto" ? r.nettoscore : r.bruttoscore}
+                      {visaTyp === "brutto" ? r.bruttoscore : r.nettoscore}
                     </td>
                     <td className="px-4 py-3 text-right font-mono text-xs hidden md:table-cell" style={{ color: "var(--color-cream-muted)" }}>
                       {oomPoang ?? "–"}p

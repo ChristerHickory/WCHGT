@@ -7,6 +7,7 @@ import { Toaster } from "@/components/ui/toaster";
 // Pages
 import Hem from "@/pages/Hem";
 import GolfApp from "@/pages/GolfApp";
+import OrderOfMerit from "@/pages/OrderOfMerit";
 import Tavlingar from "@/pages/Tavlingar";
 import Reportage from "@/pages/Reportage";
 import ReportageArtikel from "@/pages/ReportageArtikel";
@@ -23,6 +24,7 @@ function NavBar() {
   const links = [
     { href: "/", label: "Hem" },
     { href: "/app", label: "Golf-appen" },
+    { href: "/order-of-merit", label: "OoM" },
     { href: "/tavlingar", label: "Tävlingar" },
     { href: "/reportage", label: "Reportage" },
     { href: "/syfte-regler", label: "Syfte & Regler" },
@@ -149,6 +151,7 @@ export default function App() {
           <Switch>
             <Route path="/" component={Hem} />
             <Route path="/app" component={GolfApp} />
+            <Route path="/order-of-merit" component={OrderOfMerit} />
             <Route path="/tavlingar" component={Tavlingar} />
             <Route path="/reportage" component={Reportage} />
             <Route path="/reportage/:id" component={ReportageArtikel} />
