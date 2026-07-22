@@ -1,6 +1,20 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
-const API_BASE = "";
+function resolveApiBase(): string {
+  const envBase = (import.meta.env.VITE_API_BASE as string | undefined)?.trim();
+  if (envBase) {
+    return envBase.replace(/\/$/, "");
+  }
+
+  // Perplexity-hosted frontends route backend traffic through /port/5000.
+  if (typeof window !== "undefined" && window.location.hostname.endsWith("pplx.app")) {
+    return "/port/5000";
+  }
+
+  return "";
+}
+
+const API_BASE = resolveApiBase();
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
