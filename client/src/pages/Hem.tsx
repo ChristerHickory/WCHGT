@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import type { Golfare, Tavling, Reportage, Tavlingsresultat } from "@shared/schema";
 import { capitalize } from "@/lib/utils";
+import { useFontSize } from "@/hooks/use-font-size";
 
 type OomRow = {
   golfare: Golfare;
@@ -69,6 +70,33 @@ function HeroSection() {
         </div>
       </div>
     </section>
+  );
+}
+
+function FontSizeSelector() {
+  const { fontSize, setFontSize } = useFontSize();
+
+  return (
+    <div className="flex items-center justify-center gap-3 py-4 px-4 mb-4 rounded-lg" style={{ background: "rgba(201,162,39,0.08)" }}>
+      <span className="text-sm" style={{ color: "var(--color-cream-muted)" }}>Textstorlek:</span>
+      {(["small", "normal", "large"] as const).map(size => (
+        <button
+          key={size}
+          onClick={() => setFontSize(size)}
+          className="px-3 py-1.5 text-sm rounded transition-all"
+          style={{
+            background: fontSize === size ? "rgba(201,162,39,0.3)" : "transparent",
+            color: fontSize === size ? "var(--color-gold)" : "var(--color-cream-muted)",
+            border: `1px solid rgba(201,162,39,${fontSize === size ? 0.5 : 0.2})`,
+          }}
+        >
+          {size === "small" ? "A" : size === "normal" ? "A" : "A"}
+          <span className="text-xs" style={{ fontSize: size === "small" ? "0.7em" : size === "normal" ? "0.85em" : "1em" }}>
+            {size === "small" ? "-" : size === "normal" ? "·" : "+"}
+          </span>
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -321,6 +349,9 @@ export default function Hem() {
   return (
     <div>
       <HeroSection />
+      <div className="max-w-3xl mx-auto px-4">
+        <FontSizeSelector />
+      </div>
       <KpiNarrativ />
       <KommandeTavlingar />
       <SenasteNyheter />

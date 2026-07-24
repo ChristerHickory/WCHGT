@@ -23,9 +23,9 @@ function NavBar() {
 
   const links = [
     { href: "/", label: "Hem" },
-    { href: "/app", label: "Golf-appen" },
     { href: "/order-of-merit", label: "OoM" },
     { href: "/tavlingar", label: "Tävlingar" },
+    { href: "/app", label: "Golf-appen" },
     { href: "/reportage", label: "Reportage" },
     { href: "/syfte-regler", label: "Syfte & Regler" },
     { href: "/om-oss", label: "Om oss" },
@@ -61,7 +61,7 @@ function NavBar() {
           {links.map(l => (
             <Link key={l.href} href={l.href}>
               <span
-                className="px-3 py-1.5 text-sm rounded transition-all cursor-pointer"
+                className="px-3 py-1.5 text-base rounded transition-all cursor-pointer"
                 style={{
                   fontFamily: "var(--font-body)",
                   color: location === l.href ? "var(--color-gold)" : "var(--color-cream-muted)",
@@ -94,7 +94,7 @@ function MobileMenu({ links, location }: { links: { href: string; label: string 
         <div className="absolute right-0 mt-2 w-52 rounded-lg shadow-xl" style={{ background: "var(--color-green-mid)", border: "1px solid rgba(201,162,39,0.3)" }}>
           {links.map(l => (
             <Link key={l.href} href={l.href}>
-              <span className="block px-4 py-3 text-sm border-b cursor-pointer" style={{ color: location === l.href ? "var(--color-gold)" : "var(--color-cream)", borderColor: "rgba(201,162,39,0.1)" }}>
+              <span className="block px-4 py-3 text-base border-b cursor-pointer" style={{ color: location === l.href ? "var(--color-gold)" : "var(--color-cream)", borderColor: "rgba(201,162,39,0.1)" }}>
                 {l.label}
               </span>
             </Link>
