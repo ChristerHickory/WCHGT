@@ -531,11 +531,15 @@ interface Deltagare {
   countback: number[]; // hål 10-18 vid behov
 }
 
-function oomPoang(plats: number): number {
-  if (plats === 1) return 33;
-  if (plats === 2) return 31;
-  if (plats === 3) return 29;
-  return Math.max(1, 29 - (plats - 3));
+function oomPoang(plats: number, antalDeltagare: number): number {
+  // Bonus baserat på placering: 1:a +3, 2:a +2, 3:a +1, 4+ +0
+  let bonus = 0;
+  if (plats === 1) bonus = 3;
+  else if (plats === 2) bonus = 2;
+  else if (plats === 3) bonus = 1;
+  
+  const poang = antalDeltagare - plats + bonus;
+  return Math.max(1, poang); // Minimum 1 poäng
 }
 
 function raknaPlaceringar(
@@ -687,8 +691,9 @@ function NyTavlingFlode() {
 
   function sparaAllt() {
     if (!skapadTavlingId) return;
-    const resultat = deltagare
-      .filter(d => d.brutto !== "")
+    const deltagareMedResultat = deltagare.filter(d => d.brutto !== "");
+    const antalDeltagare = deltagareMedResultat.length;
+    const resultat = deltagareMedResultat
       .map(d => {
         const brutto = Number(d.brutto);
         const netto = Math.round(brutto - d.hhcp);
@@ -700,9 +705,9 @@ function NyTavlingFlode() {
           nettoscore: netto,
           hickoryHandicapVid: d.hhcp,
           placering: nettoPlats,
-          orderOfMeritPoang: oomPoang(nettoPlats),
+          orderOfMeritPoang: oomPoang(nettoPlats, antalDeltagare),
           bruttoPlacering: bruttoPlats,
-          bruttoOmPoang: oomPoang(bruttoPlats),
+          bruttoOmPoang: oomPoang(bruttoPlats, antalDeltagare),
         };
       });
     sparaResultatMutation.mutate({ tavId: skapadTavlingId, resultat });

@@ -15,6 +15,10 @@
 - Add one short dated entry per task session.
 - Record deploy outcomes and follow-up actions.
 
+## Rules
+- If new tournament results are added (manual entry, import script, or API), the homepage must be updated accordingly.
+- Verify that the first page reflects the latest competition outcome before commit/deploy.
+
 ## Entry Template
 - Date:
 - Goal:

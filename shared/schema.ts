@@ -62,6 +62,7 @@ export const tavlingar = sqliteTable("tavlingar", {
   arOrderOfMerit: integer("ar_order_of_merit", { mode: "boolean" }).notNull().default(false),
   avslutad: integer("avslutad", { mode: "boolean" }).notNull().default(false),
   parOverride: text("par_override"), // JSON array — override banans par om satt
+  anmalningsLank: text("anmalnings_lank"), // Extern länk till tävling (t.ex Min Golf)
 });
 
 export const insertTavlingSchema = createInsertSchema(tavlingar).omit({ id: true });

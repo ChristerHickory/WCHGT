@@ -12,6 +12,7 @@ function formatDatum(datum: string) {
 export default function Tavlingar() {
   const { data: tavlingar, isLoading } = useQuery<Tavling[]>({ queryKey: ["/api/tavlingar"] });
   const [valdTavling, setValdTavling] = useState<Tavling | null>(null);
+  const [aktivSektion, setAktivSektion] = useState<"kommande" | "genomförda">("kommande");
 
   const kommande = tavlingar?.filter(t => !t.avslutad).sort((a, b) => a.datum.localeCompare(b.datum)) ?? [];
   const avslutade = tavlingar?.filter(t => t.avslutad).sort((a, b) => b.datum.localeCompare(a.datum)) ?? [];
@@ -46,40 +47,36 @@ export default function Tavlingar() {
         <span style={{ color: "var(--color-cream-muted)" }}>= Räknas ej i WCS</span>
       </div>
 
-      {/* Genomförda — klickbara */}
-      {avslutade.length > 0 && (
-        <>
-          <h2 className="heading-display text-lg mb-4">Genomförda tävlingar</h2>
-          <div className="flex flex-col gap-3 mb-10">
-            {avslutade.map(t => (
-              <button
-                key={t.id}
-                data-testid={`button-tavling-${t.id}`}
-                className="w-full text-left card-vintage p-4 flex items-center gap-4 hover:bg-white/5 transition-colors cursor-pointer"
-                onClick={() => setValdTavling(t)}
-              >
-                <DatumBadge datum={t.datum} />
-                <div className="w-px self-stretch" style={{ background: "rgba(201,162,39,0.2)" }} />
-                <div className="flex-1">
-                  <div className="font-semibold text-sm" style={{ color: "var(--color-cream)", fontFamily: "var(--font-display)" }}>{t.namn}</div>
-                  {t.beskrivning && <div className="text-xs mt-0.5" style={{ color: "var(--color-cream-muted)" }}>{t.beskrivning}</div>}
-                </div>
-                <div className="flex gap-2 items-center">
-                  {t.arOrderOfMerit && <span className="badge-gold">OoM</span>}
-                  <span className="text-xs font-semibold px-3 py-1 rounded" style={{ background: "rgba(201,162,39,0.15)", color: "var(--color-gold)" }}>
-                    Visa resultat →
-                  </span>
-                </div>
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-
-      <hr className="gold-divider" />
+      {/* Tabbar för att välja sektion */}
+      <div className="flex gap-2 mb-6">
+        <button
+          onClick={() => setAktivSektion("kommande")}
+          className="px-4 py-2 rounded font-semibold text-sm transition-all"
+          style={{
+            background: aktivSektion === "kommande" ? "rgba(201,162,39,0.3)" : "rgba(201,162,39,0.1)",
+            color: aktivSektion === "kommande" ? "var(--color-gold)" : "var(--color-cream-muted)",
+            border: `1px solid rgba(201,162,39,${aktivSektion === "kommande" ? 0.5 : 0.2})`,
+          }}
+        >
+          Kommande
+        </button>
+        <button
+          onClick={() => setAktivSektion("genomförda")}
+          className="px-4 py-2 rounded font-semibold text-sm transition-all"
+          style={{
+            background: aktivSektion === "genomförda" ? "rgba(201,162,39,0.3)" : "rgba(201,162,39,0.1)",
+            color: aktivSektion === "genomförda" ? "var(--color-gold)" : "var(--color-cream-muted)",
+            border: `1px solid rgba(201,162,39,${aktivSektion === "genomförda" ? 0.5 : 0.2})`,
+          }}
+        >
+          Genomförda
+        </button>
+      </div>
 
       {/* Kommande */}
-      <h2 className="heading-display text-lg mb-4 mt-6">Kommande tävlingar</h2>
+      {aktivSektion === "kommande" && (
+        <>
+          <h2 className="heading-display text-lg mb-4">Kommande tävlingar</h2>
       <div className="flex flex-col gap-3 mb-10">
         {kommande.length === 0 ? (
           <p style={{ color: "var(--color-cream-muted)" }}>Inga kommande tävlingar inlagda.</p>
@@ -93,10 +90,60 @@ export default function Tavlingar() {
             </div>
             <div className="flex gap-2 items-center">
               {t.arOrderOfMerit && <span className="badge-gold">OoM</span>}
+              {t.anmalningsLank && (
+                <a 
+                  href={t.anmalningsLank} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-xs font-semibold px-3 py-1 rounded hover:opacity-80 transition-opacity"
+                  style={{ background: "rgba(201,162,39,0.15)", color: "var(--color-gold)" }}
+                >
+                  Anmäl dig →
+                </a>
+              )}
             </div>
           </div>
         ))}
       </div>
+        </>
+      )}
+
+      {/* Divider mellan sektioner */}
+      {aktivSektion === "kommande" && avslutade.length > 0 && (
+        <hr className="gold-divider" />
+      )}
+
+      {/* Genomförda */}
+      {aktivSektion === "genomförda" && (
+        <>
+          <h2 className="heading-display text-lg mb-4">Genomförda tävlingar</h2>
+          <div className="flex flex-col gap-3 mb-10">
+            {avslutade.length === 0 ? (
+              <p style={{ color: "var(--color-cream-muted)" }}>Inga genomförda tävlingar inlagda.</p>
+            ) : avslutade.map(t => (
+              <button
+                key={t.id}
+                data-testid={`button-tavling-${t.id}`}
+                className={`w-full text-left card-vintage p-4 flex items-center gap-4 ${t.arOrderOfMerit ? "hover:bg-white/5 transition-colors cursor-pointer" : "opacity-60 cursor-default"}`}
+                onClick={() => t.arOrderOfMerit && setValdTavling(t)}
+              >
+                <DatumBadge datum={t.datum} />
+                <div className="w-px self-stretch" style={{ background: "rgba(201,162,39,0.2)" }} />
+                <div className="flex-1">
+                  <div className="font-semibold text-sm" style={{ color: "var(--color-cream)", fontFamily: "var(--font-display)" }}>{t.namn}</div>
+                  {t.beskrivning && <div className="text-xs mt-0.5" style={{ color: "var(--color-cream-muted)" }}>{t.beskrivning}</div>}
+                </div>
+                <div className="flex gap-2 items-center">
+                  {t.arOrderOfMerit && <span className="badge-gold">OoM</span>}
+                  {t.arOrderOfMerit && <span className="text-xs font-semibold px-3 py-1 rounded" style={{ background: "rgba(201,162,39,0.15)", color: "var(--color-gold)" }}>
+                    Visa resultat →
+                  </span>}
+                </div>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
 
       <div className="mt-4 p-5 rounded-lg text-center" style={{ background: "var(--color-green-mid)", border: "1px solid rgba(201,162,39,0.2)" }}>
         <div className="heading-display text-base mb-2">Vill din klubb vara med?</div>
