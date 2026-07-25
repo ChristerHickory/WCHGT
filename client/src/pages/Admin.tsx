@@ -661,6 +661,7 @@ interface ImportPreviewRow {
   hcp: number;
   matchedGolfare?: Golfare;
   matchScore: number;
+  parsedRow: ParsedMinGolfRow;
 }
 
 function matchGolfare(namn: string, alleGolfare: Golfare[]): Golfare | undefined {
@@ -871,30 +872,63 @@ function NyTavlingFlode({ editTavlingId, onClose }: { editTavlingId?: number; on
         klubb: row.klubbnamn,
         hcp: row.hcp,
         matchedGolfare: matched,
-        matchScore: matched ? 0 : 1, // 0 = matched, 1 = not matched
+        matchScore: matched ? 0 : 1,
+        parsedRow: row,
       };
     });
     setImportPreview(preview);
   }
 
-  function confirmImportMinGolf() {
+  async function confirmImportMinGolf() {
     if (importPreview.length === 0) return;
     
-    const newDeltagare: Deltagare[] = importPreview
-      .filter(p => p.matchedGolfare) // Only add matched golfare
-      .map(p => ({
+    const matchedRows = importPreview.filter(p => p.matchedGolfare);
+    const unmatchedRows = importPreview.filter(p => !p.matchedGolfare);
+    
+    // Skapa nya golfare i databasen för ej matchade
+    const nyaGolfare: Golfare[] = [];
+    for (const row of unmatchedRows) {
+      try {
+        const res = await apiRequest("POST", "/api/golfare", {
+          namn: row.namn,
+          klubb: row.klubb || null,
+          standardHandicap: row.hcp,
+          aktiv: true,
+          stamspelare: false,
+        });
+        const nyGolfare: Golfare = await res.json();
+        nyaGolfare.push(nyGolfare);
+      } catch (e) {
+        console.error("Kunde inte skapa golfare:", row.namn, e);
+      }
+    }
+    
+    // Bygg deltagarlista från matchade + nytt skapade
+    const newDeltagare: Deltagare[] = [
+      ...matchedRows.map(p => ({
         golfareId: p.matchedGolfare!.id,
         namn: p.matchedGolfare!.namn,
         hhcp: Number(p.matchedGolfare!.hickoryHandicap ?? 0),
         brutto: "",
         countback: [],
-      }));
+      })),
+      ...nyaGolfare.map(g => ({
+        golfareId: g.id,
+        namn: g.namn,
+        hhcp: Number(g.hickoryHandicap ?? 0),
+        brutto: "",
+        countback: [],
+      })),
+    ];
     
     setDeltagare(newDeltagare);
+    queryClient.invalidateQueries({ queryKey: ["/api/golfare"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/golfare/alla"] });
     setShowImportModal(false);
     setImportText("");
     setImportPreview([]);
-    toast({ title: "Importerat!", description: `${newDeltagare.length} deltagare från Min Golf` });
+    const nyaMsg = nyaGolfare.length > 0 ? ` + ${nyaGolfare.length} nya skapade` : "";
+    toast({ title: "Importerat!", description: `${matchedRows.length} matchade${nyaMsg}` });
   }
 
   const stegLabels = ["Skapa tävling", "Lägg till deltagare", "Mata in resultat", "Klart"];
@@ -1078,28 +1112,34 @@ function NyTavlingFlode({ editTavlingId, onClose }: { editTavlingId?: number; on
                 <div className="mb-4 max-h-48 overflow-y-auto rounded p-3" style={{ background: "rgba(0,0,0,0.2)" }}>
                   {importPreview.map(p => (
                     <div key={p.id} className="mb-2 pb-2 border-b border-white/10 text-xs">
-                      <div className="flex justify-between">
-                        <span style={{ color: p.matchedGolfare ? "var(--color-cream)" : "var(--color-cream-muted)" }}>
+                      <div className="flex justify-between items-center">
+                        <span style={{ color: "var(--color-cream)" }}>
                           {p.namn} ({p.hcp})
                         </span>
-                        <span style={{ color: p.matchedGolfare ? "var(--color-gold)" : "var(--color-cream-muted)" }}>
-                          {p.matchedGolfare ? "✓" : "✗"}
-                        </span>
+                        {p.matchedGolfare ? (
+                          <span style={{ color: "var(--color-gold)" }}>✓</span>
+                        ) : (
+                          <span className="px-1 rounded text-xs font-bold" style={{ background: "rgba(201,162,39,0.2)", color: "var(--color-gold)", fontSize: "0.65rem" }}>NY</span>
+                        )}
                       </div>
-                      {p.matchedGolfare && (
+                      {p.matchedGolfare ? (
                         <div style={{ color: "var(--color-cream-muted)", fontSize: "0.7rem" }}>
-                          {p.matchedGolfare.namn} (HCP {p.matchedGolfare.hickoryHandicap})
+                          → {p.matchedGolfare.namn} (H-HCP {p.matchedGolfare.hickoryHandicap})
+                        </div>
+                      ) : (
+                        <div style={{ color: "var(--color-gold)", fontSize: "0.7rem", opacity: 0.7 }}>
+                          Skapas som ny spelare (std-HCP {p.hcp})
                         </div>
                       )}
                     </div>
                   ))}
                 </div>
                 <div className="text-xs mb-3" style={{ color: "var(--color-cream-muted)" }}>
-                  {importPreview.filter(p => p.matchedGolfare).length} av {importPreview.length} matchade
+                  {importPreview.filter(p => p.matchedGolfare).length} matchade · {importPreview.filter(p => !p.matchedGolfare).length} nya spelare
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => confirmImportMinGolf()} disabled={importPreview.filter(p => p.matchedGolfare).length === 0} className="flex-1 px-4 py-2 rounded text-sm font-bold" style={{ background: "var(--color-gold)", color: "var(--color-green-dark)" }}>
-                    Lägg till ({importPreview.filter(p => p.matchedGolfare).length})
+                  <button onClick={() => confirmImportMinGolf()} disabled={importPreview.length === 0} className="flex-1 px-4 py-2 rounded text-sm font-bold" style={{ background: "var(--color-gold)", color: "var(--color-green-dark)" }}>
+                    Lägg till ({importPreview.length})
                   </button>
                   <button onClick={() => { setShowImportModal(false); setImportText(""); setImportPreview([]); }} className="px-4 py-2 rounded text-sm" style={{ background: "rgba(255,255,255,0.06)", color: "var(--color-cream-muted)" }}>
                     Avbryt
