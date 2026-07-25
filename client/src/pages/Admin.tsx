@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -290,6 +290,7 @@ function AdminTavlingar() {
   const [form, setForm] = useState(emptyForm);
   const [redigerarId, setRedigerarId] = useState<number | null>(null);
   const [redigForm, setRedigForm] = useState(emptyForm);
+  const [editTavlingId, setEditTavlingId] = useState<number | null>(null);
 
   const addMutation = useMutation({
     mutationFn: (data: object) => apiRequest("POST", "/api/tavlingar", data),
@@ -323,6 +324,11 @@ function AdminTavlingar() {
       beskrivning: t.beskrivning ?? "",
       arOrderOfMerit: t.arOrderOfMerit ?? false,
     });
+  }
+
+  // Om vi redigerar en tävling, visa NyTavlingFlode i edit-mode
+  if (editTavlingId) {
+    return <NyTavlingFlode editTavlingId={editTavlingId} onClose={() => { setEditTavlingId(null); queryClient.invalidateQueries({ queryKey: ["/api/tavlingar"] }); }} />;
   }
 
   return (
@@ -375,7 +381,7 @@ function AdminTavlingar() {
                       </button>
                   }
                   <button
-                    onClick={() => startRedigera(t)}
+                    onClick={() => setEditTavlingId(t.id)}
                     className="text-xs px-2 py-1 rounded font-semibold hover:opacity-80 transition-opacity"
                     style={{ background: "rgba(201,162,39,0.15)", color: "var(--color-gold)", border: "1px solid rgba(201,162,39,0.3)" }}
                   >
@@ -683,12 +689,17 @@ function matchGolfare(namn: string, alleGolfare: Golfare[]): Golfare | undefined
   return bestMatch?.golfare;
 }
 
-function NyTavlingFlode() {
+function NyTavlingFlode({ editTavlingId, onClose }: { editTavlingId?: number; onClose?: () => void } = {}) {
   const { toast } = useToast();
   const { data: alleGolfare } = useQuery<Golfare[]>({ queryKey: ["/api/golfare/alla"] });
   const { data: banor } = useQuery<Bana[]>({ queryKey: ["/api/banor"] });
+  const { data: befintligaResultat } = useQuery<Tavlingsresultat[]>({
+    queryKey: ["/api/tavlingar", editTavlingId, "resultat"],
+    queryFn: () => editTavlingId ? apiRequest("GET", `/api/tavlingar/${editTavlingId}/resultat`).then(r => r.json()) : Promise.resolve([]),
+    enabled: !!editTavlingId,
+  });
 
-  const [steg, setSteg] = useState<Steg>(1);
+  const [steg, setSteg] = useState<Steg>(editTavlingId ? 2 : 1);
   const [tavlingForm, setTavlingForm] = useState({ namn: "", datum: "", banaId: "", beskrivning: "", arOrderOfMerit: true });
   const [skapadTavlingId, setSkapadTavlingId] = useState<number | null>(null);
   const [deltagare, setDeltagare] = useState<Deltagare[]>([]);
@@ -697,6 +708,36 @@ function NyTavlingFlode() {
   const [showImportModal, setShowImportModal] = useState(false);
   const [importText, setImportText] = useState("");
   const [importPreview, setImportPreview] = useState<ImportPreviewRow[]>([]);
+
+  // Load existing tournament data when in edit mode
+  const { data: existingTavling } = useQuery<Tavling>({
+    queryKey: ["/api/tavlingar", editTavlingId],
+    queryFn: () => editTavlingId ? apiRequest("GET", `/api/tavlingar/${editTavlingId}`).then(r => r.json()) : Promise.resolve(null),
+    enabled: !!editTavlingId,
+  });
+
+  // Initialize form and deltagare when in edit mode
+  useEffect(() => {
+    if (editTavlingId && existingTavling && befintligaResultat) {
+      setSkapadTavlingId(editTavlingId);
+      setTavlingForm({
+        namn: existingTavling.namn,
+        datum: existingTavling.datum,
+        banaId: existingTavling.banaId ? String(existingTavling.banaId) : "",
+        beskrivning: existingTavling.beskrivning ?? "",
+        arOrderOfMerit: existingTavling.arOrderOfMerit ?? false,
+      });
+      // Convert results to deltagare format
+      const newDeltagare: Deltagare[] = befintligaResultat.map(r => ({
+        golfareId: r.golfareId,
+        namn: alleGolfare?.find(g => g.id === r.golfareId)?.namn ?? `Golfare ${r.golfareId}`,
+        hhcp: r.hickoryHandicapVid,
+        brutto: r.bruttoscore ? String(r.bruttoscore) : "",
+        countback: r.countback ?? [],
+      }));
+      setDeltagare(newDeltagare);
+    }
+  }, [editTavlingId, existingTavling, befintligaResultat, alleGolfare]);
 
   const inputStyle = { background: "var(--color-green-light)", border: "1px solid rgba(201,162,39,0.3)", borderRadius: "0.375rem", color: "var(--color-cream)", padding: "0.5rem 0.75rem", width: "100%", fontSize: "0.875rem" };
 
@@ -881,31 +922,46 @@ function NyTavlingFlode() {
         })}
       </div>
 
-      {/* STEG 1: Skapa tävling */}
+      {/* STEG 1: Skapa/Redigera tävling */}
       {steg === 1 && (
         <div className="card-vintage p-6">
-          <h2 className="heading-display text-base mb-5">Steg 1 — Skapa tävling</h2>
+          <h2 className="heading-display text-base mb-5">Steg 1 — {editTavlingId ? "Redigera" : "Skapa"} tävling</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-            <input style={inputStyle} placeholder="Tävlingsnamn *" value={tavlingForm.namn} onChange={e => setTavlingForm(f => ({ ...f, namn: e.target.value }))} />
-            <input style={inputStyle} type="date" value={tavlingForm.datum} onChange={e => setTavlingForm(f => ({ ...f, datum: e.target.value }))} />
-            <select style={inputStyle} value={tavlingForm.banaId} onChange={e => setTavlingForm(f => ({ ...f, banaId: e.target.value }))}>
+            <input style={inputStyle} placeholder="Tävlingsnamn *" value={tavlingForm.namn} onChange={e => setTavlingForm(f => ({ ...f, namn: e.target.value }))} disabled={!!editTavlingId} />
+            <input style={inputStyle} type="date" value={tavlingForm.datum} onChange={e => setTavlingForm(f => ({ ...f, datum: e.target.value }))} disabled={!!editTavlingId} />
+            <select style={inputStyle} value={tavlingForm.banaId} onChange={e => setTavlingForm(f => ({ ...f, banaId: e.target.value }))} disabled={!!editTavlingId}>
               <option value="">Välj bana (valfritt)</option>
               {banor?.map(b => <option key={b.id} value={b.id}>{b.namn}</option>)}
             </select>
-            <input style={inputStyle} placeholder="Beskrivning (valfritt)" value={tavlingForm.beskrivning} onChange={e => setTavlingForm(f => ({ ...f, beskrivning: e.target.value }))} />
+            <input style={inputStyle} placeholder="Beskrivning (valfritt)" value={tavlingForm.beskrivning} onChange={e => setTavlingForm(f => ({ ...f, beskrivning: e.target.value }))} disabled={!!editTavlingId} />
           </div>
           <label className="flex items-center gap-2 text-sm mb-5" style={{ color: "var(--color-cream-muted)" }}>
-            <input type="checkbox" checked={tavlingForm.arOrderOfMerit} onChange={e => setTavlingForm(f => ({ ...f, arOrderOfMerit: e.target.checked }))} />
+            <input type="checkbox" checked={tavlingForm.arOrderOfMerit} onChange={e => setTavlingForm(f => ({ ...f, arOrderOfMerit: e.target.checked }))} disabled={!!editTavlingId} />
             Räknas i Order of Merit
           </label>
-          <button
-            onClick={() => skapasTavlingMutation.mutate({ ...tavlingForm, banaId: tavlingForm.banaId ? Number(tavlingForm.banaId) : null, avslutad: false })}
-            disabled={!tavlingForm.namn || !tavlingForm.datum || skapasTavlingMutation.isPending}
-            className="px-6 py-2 rounded font-bold text-sm"
-            style={{ background: "var(--color-gold)", color: "var(--color-green-dark)" }}
-          >
-            Skapa & gå vidare →
-          </button>
+          {editTavlingId ? (
+            <div className="flex gap-3">
+              <button
+                onClick={() => setSteg(2)}
+                className="px-6 py-2 rounded font-bold text-sm"
+                style={{ background: "var(--color-gold)", color: "var(--color-green-dark)" }}
+              >
+                Nästa: Deltagare →
+              </button>
+              <button onClick={onClose} className="px-4 py-2 rounded text-sm" style={{ background: "rgba(255,255,255,0.06)", color: "var(--color-cream-muted)" }}>
+                Avbryt
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => skapasTavlingMutation.mutate({ ...tavlingForm, banaId: tavlingForm.banaId ? Number(tavlingForm.banaId) : null, avslutad: false })}
+              disabled={!tavlingForm.namn || !tavlingForm.datum || skapasTavlingMutation.isPending}
+              className="px-6 py-2 rounded font-bold text-sm"
+              style={{ background: "var(--color-gold)", color: "var(--color-green-dark)" }}
+            >
+              Skapa & gå vidare →
+            </button>
+          )}
         </div>
       )}
 
@@ -981,6 +1037,11 @@ function NyTavlingFlode() {
               className="px-6 py-2 rounded font-bold text-sm" style={{ background: "var(--color-gold)", color: "var(--color-green-dark)" }}>
               Gå till resultat ({deltagare.length} st) →
             </button>
+            {editTavlingId && (
+              <button onClick={() => { if (onClose) onClose(); }} className="px-4 py-2 rounded text-sm" style={{ background: "rgba(255,255,255,0.06)", color: "var(--color-cream-muted)" }}>
+                Avbryt
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -1161,17 +1222,36 @@ function NyTavlingFlode() {
       {steg === 4 && (
         <div className="card-vintage p-8 text-center">
           <div className="text-4xl mb-4">🏆</div>
-          <h2 className="heading-display text-xl mb-3">Tävling sparad!</h2>
-          <p className="text-sm mb-6" style={{ color: "var(--color-cream-muted)" }}>Resultat, placeringar och OoM-poäng är uppdaterade.</p>
-          <div className="flex gap-3 justify-center">
-            <a href="/#/tavlingar" className="px-5 py-2 rounded font-bold text-sm" style={{ background: "var(--color-gold)", color: "var(--color-green-dark)" }}>
-              Se tävlingssidan →
-            </a>
-            <button onClick={() => { setSteg(1); setSkapadTavlingId(null); setDeltagare([]); setTavlingForm({ namn: "", datum: "", banaId: "", beskrivning: "", arOrderOfMerit: true }); }}
-              className="px-5 py-2 rounded text-sm"
-              style={{ background: "rgba(255,255,255,0.06)", color: "var(--color-cream-muted)" }}>
-              Ny tävling
-            </button>
+          <h2 className="heading-display text-xl mb-3">{editTavlingId ? "Tävling uppdaterad!" : "Tävling sparad!"}</h2>
+          <p className="text-sm mb-6" style={{ color: "var(--color-cream-muted)" }}>
+            {editTavlingId ? "Deltagarlistan och resultaten är uppdaterade." : "Resultat, placeringar och OoM-poäng är uppdaterade."}
+          </p>
+          <div className="flex gap-3 justify-center flex-wrap">
+            {editTavlingId ? (
+              <>
+                <button onClick={() => { if (onClose) onClose(); }}
+                  className="px-5 py-2 rounded font-bold text-sm"
+                  style={{ background: "var(--color-gold)", color: "var(--color-green-dark)" }}>
+                  Gå tillbaka
+                </button>
+                <button onClick={() => { setSteg(2); }}
+                  className="px-5 py-2 rounded text-sm"
+                  style={{ background: "rgba(255,255,255,0.06)", color: "var(--color-cream-muted)" }}>
+                  Redigera mer
+                </button>
+              </>
+            ) : (
+              <>
+                <a href="/#/tavlingar" className="px-5 py-2 rounded font-bold text-sm" style={{ background: "var(--color-gold)", color: "var(--color-green-dark)" }}>
+                  Se tävlingssidan →
+                </a>
+                <button onClick={() => { setSteg(1); setSkapadTavlingId(null); setDeltagare([]); setTavlingForm({ namn: "", datum: "", banaId: "", beskrivning: "", arOrderOfMerit: true }); }}
+                  className="px-5 py-2 rounded text-sm"
+                  style={{ background: "rgba(255,255,255,0.06)", color: "var(--color-cream-muted)" }}>
+                  Ny tävling
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
