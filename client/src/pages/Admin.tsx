@@ -664,24 +664,34 @@ interface ImportPreviewRow {
   parsedRow: ParsedMinGolfRow;
 }
 
+// Normaliserar ett namn till kanonisk form: delar upp ord, sorterar dem alfabetiskt
+// "BERGSTRÖM, Christer" → "bergström christer"
+// "Christer Bergström"  → "bergström christer"
+// "BERGSTRÖM Christer"  → "bergström christer"
+// Alla tre ger samma nyckel → matchar varandra
+function normalizeringsnyckel(namn: string): string {
+  return namn.toLowerCase().replace(/,/g, " ").replace(/\s+/g, " ").trim()
+    .split(" ").filter(Boolean).sort().join(" ");
+}
+
 function matchGolfare(namn: string, alleGolfare: Golfare[]): Golfare | undefined {
   if (!namn || alleGolfare.length === 0) return undefined;
   
-  const searchNamn = namn.toLowerCase().trim();
+  const searchKey = normalizeringsnyckel(namn);
   
-  // Först försök exakt match (case-insensitive)
+  // Exakt match efter normalisering (hanterar BERGSTRÖM, Christer vs Christer Bergström)
   for (const g of alleGolfare) {
-    if (g.namn.toLowerCase().trim() === searchNamn) {
+    if (normalizeringsnyckel(g.namn) === searchKey) {
       return g;
     }
   }
   
-  // Sedan försök Levenshtein med threshold 6
+  // Fuzzy match med Levenshtein på normaliserade nycklar
   let bestMatch: { golfare: Golfare; score: number } | null = null;
-  const threshold = 6;
+  const threshold = 5;
   
   for (const g of alleGolfare) {
-    const distance = levenshteinDistance(searchNamn, g.namn);
+    const distance = levenshteinDistance(searchKey, normalizeringsnyckel(g.namn));
     if (distance < threshold && (!bestMatch || distance < bestMatch.score)) {
       bestMatch = { golfare: g, score: distance };
     }
