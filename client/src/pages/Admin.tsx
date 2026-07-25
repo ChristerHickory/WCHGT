@@ -582,6 +582,107 @@ function raknaPlaceringar(
   return placMap;
 }
 
+// ─── Min Golf Import Utils ─────────────────────────────────────────────
+
+function levenshteinDistance(a: string, b: string): number {
+  const aLower = a.toLowerCase();
+  const bLower = b.toLowerCase();
+  const lenA = aLower.length;
+  const lenB = bLower.length;
+  const matrix: number[][] = [];
+  for (let i = 0; i <= lenB; i++) matrix[i] = [i];
+  for (let j = 0; j <= lenA; j++) matrix[0][j] = j;
+  for (let i = 1; i <= lenB; i++) {
+    for (let j = 1; j <= lenA; j++) {
+      const cost = aLower[j - 1] === bLower[i - 1] ? 0 : 1;
+      matrix[i][j] = Math.min(matrix[i - 1][j] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j - 1] + cost);
+    }
+  }
+  return matrix[lenB][lenA];
+}
+
+interface ParsedMinGolfRow {
+  fornamn: string;
+  efternamn: string;
+  klubbnamn: string;
+  hcp: number;
+}
+
+function parseMinGolfList(text: string): ParsedMinGolfRow[] {
+  const lines = text.trim().split("\n");
+  const result: ParsedMinGolfRow[] = [];
+  
+  for (const line of lines) {
+    // Skip header row and empty lines
+    if (!line.trim() || line.includes("Förnamn") || line.includes("förnamn")) continue;
+    
+    // Split by both tab and multiple spaces (to handle Excel exports that become space-separated)
+    const parts = line.split(/\t|  +/).map(p => p.trim()).filter(p => p);
+    if (parts.length < 4) continue; // Need at least #, förnamn, efternamn, hcp
+    
+    // Format can be: # Förnamn Efternamn Klubbnamn HCP ...
+    // After split: [#, förnamn, efternamn, klubbnamn, hcp, ...]
+    // OR if spaces instead of tabs: might have more parts
+    
+    let fornamn = "", efternamn = "", klubbnamn = "", hcp = 0;
+    
+    // Try to find numeric HCP value by looking from the end
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const val = parseFloat(parts[i].replace(",", "."));
+      if (!isNaN(val) && val > 0 && val < 50) { // HCP typically 0-36
+        hcp = val;
+        // Förnamn is usually part 1, efternamn part 2 (after the #)
+        const startIdx = parts[0] === "#" || !isNaN(Number(parts[0])) ? 1 : 0;
+        fornamn = parts[startIdx] || "";
+        efternamn = parts[startIdx + 1] || "";
+        klubbnamn = parts.slice(startIdx + 2, i).join(" ");
+        break;
+      }
+    }
+    
+    if (fornamn && efternamn) {
+      result.push({ fornamn, efternamn, klubbnamn, hcp });
+    }
+  }
+  
+  return result;
+}
+
+interface ImportPreviewRow {
+  id: string;
+  namn: string;
+  klubb: string;
+  hcp: number;
+  matchedGolfare?: Golfare;
+  matchScore: number;
+}
+
+function matchGolfare(namn: string, alleGolfare: Golfare[]): Golfare | undefined {
+  if (!namn || alleGolfare.length === 0) return undefined;
+  
+  const searchNamn = namn.toLowerCase().trim();
+  
+  // Först försök exakt match (case-insensitive)
+  for (const g of alleGolfare) {
+    if (g.namn.toLowerCase().trim() === searchNamn) {
+      return g;
+    }
+  }
+  
+  // Sedan försök Levenshtein med threshold 6
+  let bestMatch: { golfare: Golfare; score: number } | null = null;
+  const threshold = 6;
+  
+  for (const g of alleGolfare) {
+    const distance = levenshteinDistance(searchNamn, g.namn);
+    if (distance < threshold && (!bestMatch || distance < bestMatch.score)) {
+      bestMatch = { golfare: g, score: distance };
+    }
+  }
+  
+  return bestMatch?.golfare;
+}
+
 function NyTavlingFlode() {
   const { toast } = useToast();
   const { data: alleGolfare } = useQuery<Golfare[]>({ queryKey: ["/api/golfare/alla"] });
@@ -593,6 +694,9 @@ function NyTavlingFlode() {
   const [deltagare, setDeltagare] = useState<Deltagare[]>([]);
   const [sokTerm, setSokTerm] = useState("");
   const [countbackModal, setCountbackModal] = useState<{ ids: number[]; typ: "brutto" | "netto" } | null>(null);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [importPreview, setImportPreview] = useState<ImportPreviewRow[]>([]);
 
   const inputStyle = { background: "var(--color-green-light)", border: "1px solid rgba(201,162,39,0.3)", borderRadius: "0.375rem", color: "var(--color-cream)", padding: "0.5rem 0.75rem", width: "100%", fontSize: "0.875rem" };
 
@@ -713,6 +817,45 @@ function NyTavlingFlode() {
     sparaResultatMutation.mutate({ tavId: skapadTavlingId, resultat });
   }
 
+  function handleImportMinGolf() {
+    if (!importText.trim() || !alleGolfare) return;
+    
+    const parsed = parseMinGolfList(importText);
+    const preview: ImportPreviewRow[] = parsed.map((row, idx) => {
+      const fullNamn = `${row.fornamn} ${row.efternamn}`;
+      const matched = matchGolfare(fullNamn, alleGolfare);
+      return {
+        id: `import-${idx}`,
+        namn: fullNamn,
+        klubb: row.klubbnamn,
+        hcp: row.hcp,
+        matchedGolfare: matched,
+        matchScore: matched ? 0 : 1, // 0 = matched, 1 = not matched
+      };
+    });
+    setImportPreview(preview);
+  }
+
+  function confirmImportMinGolf() {
+    if (importPreview.length === 0) return;
+    
+    const newDeltagare: Deltagare[] = importPreview
+      .filter(p => p.matchedGolfare) // Only add matched golfare
+      .map(p => ({
+        golfareId: p.matchedGolfare!.id,
+        namn: p.matchedGolfare!.namn,
+        hhcp: Number(p.matchedGolfare!.hickoryHandicap ?? 0),
+        brutto: "",
+        countback: [],
+      }));
+    
+    setDeltagare(newDeltagare);
+    setShowImportModal(false);
+    setImportText("");
+    setImportPreview([]);
+    toast({ title: "Importerat!", description: `${newDeltagare.length} deltagare från Min Golf` });
+  }
+
   const stegLabels = ["Skapa tävling", "Lägg till deltagare", "Mata in resultat", "Klart"];
 
   return (
@@ -770,8 +913,19 @@ function NyTavlingFlode() {
       {steg === 2 && (
         <div>
           <div className="card-vintage p-6 mb-4">
-            <h2 className="heading-display text-base mb-1">Steg 2 — Deltagare</h2>
-            <p className="text-xs mb-4" style={{ color: "var(--color-cream-muted)" }}>Sök och lägg till golfare. H-HCP kan justeras per tävling.</p>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="heading-display text-base mb-1">Steg 2 — Deltagare</h2>
+                <p className="text-xs" style={{ color: "var(--color-cream-muted)" }}>Sök och lägg till golfare. H-HCP kan justeras per tävling.</p>
+              </div>
+              <button
+                onClick={() => setShowImportModal(true)}
+                className="px-3 py-2 rounded text-xs font-semibold whitespace-nowrap"
+                style={{ background: "rgba(201,162,39,0.2)", color: "var(--color-gold)", border: "1px solid rgba(201,162,39,0.4)" }}
+              >
+                📋 Importera från Min Golf
+              </button>
+            </div>
             <div className="relative mb-3">
               <input style={inputStyle} placeholder="Sök golfare..." value={sokTerm} onChange={e => setSokTerm(e.target.value)} />
               {sokTerm && (
@@ -827,6 +981,71 @@ function NyTavlingFlode() {
               className="px-6 py-2 rounded font-bold text-sm" style={{ background: "var(--color-gold)", color: "var(--color-green-dark)" }}>
               Gå till resultat ({deltagare.length} st) →
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Import Modal */}
+      {showImportModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="card-vintage p-6 max-w-md w-full rounded-lg" style={{ background: "var(--color-green-dark)", border: "1px solid rgba(201,162,39,0.3)" }}>
+            <h3 className="heading-display text-base mb-2">Importera från Min Golf</h3>
+            <p className="text-xs mb-4" style={{ color: "var(--color-cream-muted)" }}>
+              Kopiera anmälningslistan från Min Golf och klistra in här (tab-separerat format):
+            </p>
+            
+            {importPreview.length === 0 ? (
+              <div>
+                <textarea
+                  value={importText}
+                  onChange={e => setImportText(e.target.value)}
+                  placeholder="Förnamn⟹Efternamn⟹Klubbnamn⟹HCP⟹..."
+                  className="w-full h-24 rounded p-2 text-xs font-mono mb-3"
+                  style={{ background: "var(--color-green-light)", border: "1px solid rgba(201,162,39,0.3)", color: "var(--color-cream)" }}
+                />
+                <div className="flex gap-2">
+                  <button onClick={() => { handleImportMinGolf(); }} className="flex-1 px-4 py-2 rounded text-sm font-bold" style={{ background: "var(--color-gold)", color: "var(--color-green-dark)" }}>
+                    Förhandsgranska
+                  </button>
+                  <button onClick={() => { setShowImportModal(false); setImportText(""); setImportPreview([]); }} className="px-4 py-2 rounded text-sm" style={{ background: "rgba(255,255,255,0.06)", color: "var(--color-cream-muted)" }}>
+                    Avbryt
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <div className="mb-4 max-h-48 overflow-y-auto rounded p-3" style={{ background: "rgba(0,0,0,0.2)" }}>
+                  {importPreview.map(p => (
+                    <div key={p.id} className="mb-2 pb-2 border-b border-white/10 text-xs">
+                      <div className="flex justify-between">
+                        <span style={{ color: p.matchedGolfare ? "var(--color-cream)" : "var(--color-cream-muted)" }}>
+                          {p.namn} ({p.hcp})
+                        </span>
+                        <span style={{ color: p.matchedGolfare ? "var(--color-gold)" : "var(--color-cream-muted)" }}>
+                          {p.matchedGolfare ? "✓" : "✗"}
+                        </span>
+                      </div>
+                      {p.matchedGolfare && (
+                        <div style={{ color: "var(--color-cream-muted)", fontSize: "0.7rem" }}>
+                          {p.matchedGolfare.namn} (HCP {p.matchedGolfare.hickoryHandicap})
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <div className="text-xs mb-3" style={{ color: "var(--color-cream-muted)" }}>
+                  {importPreview.filter(p => p.matchedGolfare).length} av {importPreview.length} matchade
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => confirmImportMinGolf()} disabled={importPreview.filter(p => p.matchedGolfare).length === 0} className="flex-1 px-4 py-2 rounded text-sm font-bold" style={{ background: "var(--color-gold)", color: "var(--color-green-dark)" }}>
+                    Lägg till ({importPreview.filter(p => p.matchedGolfare).length})
+                  </button>
+                  <button onClick={() => { setShowImportModal(false); setImportText(""); setImportPreview([]); }} className="px-4 py-2 rounded text-sm" style={{ background: "rgba(255,255,255,0.06)", color: "var(--color-cream-muted)" }}>
+                    Avbryt
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
