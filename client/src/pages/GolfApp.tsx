@@ -10,6 +10,14 @@ type Tab = "ledartavla" | "runda" | "historik";
 type RundaTyp = "tavling" | "traning";
 type RundaSteg = "typ" | "tavling" | "golfare" | "hal" | "summering";
 
+function formatBanaNamn(b: Pick<Bana, "namn" | "klubb" | "delbana">): string {
+  const klubb = (b.klubb ?? "").trim();
+  const delbana = (b.delbana ?? "").trim();
+  if (klubb && delbana) return `${klubb} - ${delbana}`;
+  if (klubb) return klubb;
+  return b.namn;
+}
+
 function PageHeader() {
   return (
     <div className="text-center py-10 px-4" style={{ borderBottom: "1px solid rgba(201,162,39,0.2)" }}>
@@ -59,6 +67,9 @@ function Ledartavla() {
           ))}
         </div>
       </div>
+      <p className="text-xs mb-3" style={{ color: "var(--color-cream-muted)" }}>
+        Regel: Endast spelarens sex bästa OoM-resultat räknas i totalen.
+      </p>
       {isLoading ? <div style={{ color: "var(--color-cream-muted)" }}>Laddar...</div> : (
         <div className="card-vintage overflow-hidden">
           <table className="w-full text-sm">
@@ -236,7 +247,7 @@ function NyRunda() {
                 style={{ border: runda.tavlingId === t.id ? "2px solid var(--color-gold)" : "2px solid transparent" }}>
                 <div className="font-semibold" style={{ color: "var(--color-cream)", fontFamily: "var(--font-display)" }}>{t.namn}</div>
                 <div className="text-xs mt-1" style={{ color: "var(--color-cream-muted)" }}>
-                  {t.datum} {bana ? `· ${bana.namn}` : ""}
+                  {t.datum} {bana ? `· ${formatBanaNamn(bana)}` : ""}
                 </div>
               </button>
             );

@@ -11,6 +11,7 @@ export const golfare = sqliteTable("golfare", {
   hickoryHandicap: real("hickory_handicap").notNull().default(50),
   aktiv: integer("aktiv", { mode: "boolean" }).notNull().default(true),
   stamspelare: integer("stamspelare", { mode: "boolean" }).notNull().default(false),
+  stamspelareOverride: integer("stamspelare_override", { mode: "boolean" }),
 });
 
 export const insertGolfareSchema = createInsertSchema(golfare).omit({ id: true });
@@ -21,6 +22,9 @@ export type Golfare = typeof golfare.$inferSelect;
 export const banor = sqliteTable("banor", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   namn: text("namn").notNull(),
+  klubb: text("klubb"),
+  delbana: text("delbana"),
+  standardTee: text("standard_tee").notNull().default("Blå"),
   ort: text("ort"),
   par: integer("par").notNull().default(72),
   slope: integer("slope").notNull().default(113),

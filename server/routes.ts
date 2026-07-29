@@ -69,6 +69,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json(storage.setStamspelare(id, stamspelare));
   });
 
+  app.patch("/api/golfare/:id/stamspelare/auto", requirePin, (req, res) => {
+    const id = Number(req.params.id);
+    const g = storage.clearStamspelareOverride(id);
+    g ? res.json(g) : res.status(404).json({ error: "Golfare hittades inte" });
+  });
+
   app.patch("/api/golfare/:id/handicap", requirePin, (req, res) => {
     const g = storage.updateGolfareHandicap(Number(req.params.id), req.body.hickoryHandicap);
     g ? res.json(g) : res.status(404).json({ error: "Golfare hittades inte" });
@@ -80,6 +86,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const parsed = insertBanaSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error });
     res.status(201).json(storage.createBana(parsed.data));
+  });
+  app.patch("/api/banor/:id", requirePin, (req, res) => {
+    const id = Number(req.params.id);
+    const b = storage.updateBanaInfo(id, req.body);
+    b ? res.json(b) : res.status(404).json({ error: "Bana hittades inte" });
   });
 
   // Rundor
@@ -107,6 +118,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const t = storage.updateTavling(Number(req.params.id), req.body);
     t ? res.json(t) : res.status(404).json({ error: "Tävling hittades inte" });
   });
+  app.delete("/api/tavlingar/:id", requirePin, (req, res) => {
+    const deleted = storage.deleteTavling(Number(req.params.id));
+    deleted ? res.status(204).send() : res.status(404).json({ error: "Tävling hittades inte" });
+  });
 
   // Tävlingsresultat
   app.get("/api/tavlingar/:id/resultat", (req, res) =>
@@ -116,6 +131,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!parsed.success) return res.status(400).json({ error: parsed.error });
     res.status(201).json(storage.createResultat(parsed.data));
   });
+  app.delete("/api/tavlingsresultat/:id", requirePin, (req, res) => {
+    const deleted = storage.deleteResultat(Number(req.params.id));
+    deleted ? res.status(204).send() : res.status(404).json({ error: "Resultat hittades inte" });
+  });
 
   // Bulk-spara alla resultat för en tävling (ersätter befintliga)
   app.post("/api/tavlingar/:id/resultat/bulk", requirePin, (req, res) => {
@@ -124,6 +143,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!Array.isArray(resultat)) return res.status(400).json({ error: "resultat måste vara en array" });
     const saved = storage.bulkSaveResultat(tavlingId, resultat);
     res.status(201).json(saved);
+  });
+  app.delete("/api/tavlingar/:id/resultat", requirePin, (req, res) => {
+    const tavlingId = Number(req.params.id);
+    const deletedCount = storage.clearResultatByTavling(tavlingId);
+    res.json({ deletedCount });
   });
 
   // Reportage

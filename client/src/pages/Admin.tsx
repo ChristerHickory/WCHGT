@@ -6,6 +6,29 @@ import type { Golfare, Bana, Tavling, Tavlingsresultat } from "@shared/schema";
 
 const ADMIN_PIN = "wchgt2026";
 
+const KLUBB_PRESETS = [
+  "Vallda",
+  "Borås",
+  "Öijared",
+] as const;
+
+const DELBANA_PRESETS: Record<string, string[]> = {
+  "Borås": ["Norra", "Södra"],
+  "Öijared": ["Gamla", "Nya", "Park"],
+  "Vallda": [],
+};
+
+const KLUBBAR_UTAN_DELBANA = new Set(["Vallda"]);
+const TEE_PRESETS = ["Blå", "Gul", "Röd", "Vit", "Svart"] as const;
+
+function formatBanaNamn(b: Pick<Bana, "namn" | "klubb" | "delbana">): string {
+  const klubb = (b.klubb ?? "").trim();
+  const delbana = (b.delbana ?? "").trim();
+  if (klubb && delbana) return `${klubb} - ${delbana}`;
+  if (klubb) return klubb;
+  return b.namn;
+}
+
 export default function Admin() {
   const [pinInput, setPinInput] = useState("");
   const [authed, setAuthed] = useState(false);
@@ -103,6 +126,11 @@ function AdminGolfare() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/golfare/alla"] }),
   });
 
+  const autoStamMutation = useMutation({
+    mutationFn: (id: number) => apiRequest("PATCH", `/api/golfare/${id}/stamspelare/auto`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/golfare/alla"] }),
+  });
+
   const inputStyle = { background: "var(--color-green-light)", border: "1px solid rgba(201,162,39,0.3)", borderRadius: "0.375rem", color: "var(--color-cream)", padding: "0.5rem 0.75rem", width: "100%", fontSize: "0.875rem" };
   const antalStam = (golfare ?? []).filter(g => g.stamspelare).length;
 
@@ -126,7 +154,7 @@ function AdminGolfare() {
         <span className="text-xs" style={{ color: "var(--color-cream-muted)" }}>{antalStam} stamspelare</span>
       </div>
       <p className="text-xs mb-4" style={{ color: "var(--color-cream-muted)" }}>
-        Markera golfare som <span style={{ color: "var(--color-gold)", fontWeight: 600 }}>Stamspelare</span> — de laddas in automatiskt i startfältet när du skapar ny tävling.
+        Stamspelare beräknas automatiskt från avslutade OoM-tävlingar (minst 50% deltagande). Checkbox sätter manuell override, och knappen "Auto" återgår till automatisk beräkning.
       </p>
       <div className="flex flex-col gap-2">
         {(golfare ?? []).sort((a, b) => {
@@ -140,17 +168,31 @@ function AdminGolfare() {
                 {g.klubb || "–"} · H-HCP {Number(g.hickoryHandicap ?? 0).toFixed(1)}
               </div>
             </div>
-            <label className="flex items-center gap-2 cursor-pointer select-none" title="Markera som stamspelare">
-              <span className="text-xs font-semibold" style={{ color: g.stamspelare ? "var(--color-gold)" : "var(--color-cream-muted)" }}>
-                Stamspelare
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] px-2 py-0.5 rounded font-semibold"
+                style={{ background: g.stamspelareOverride == null ? "rgba(255,255,255,0.08)" : "rgba(201,162,39,0.2)", color: g.stamspelareOverride == null ? "var(--color-cream-muted)" : "var(--color-gold)" }}>
+                {g.stamspelareOverride == null ? "Auto" : "Manuell"}
               </span>
-              <input
-                type="checkbox"
-                checked={g.stamspelare ?? false}
-                onChange={e => stamspelareMutation.mutate({ id: g.id, stamspelare: e.target.checked })}
-                className="accent-amber-400 w-4 h-4"
-              />
-            </label>
+              <button
+                onClick={() => autoStamMutation.mutate(g.id)}
+                className="text-xs px-2 py-1 rounded"
+                style={{ background: "rgba(255,255,255,0.06)", color: "var(--color-cream-muted)", border: "1px solid rgba(201,162,39,0.2)" }}
+                title="Återgå till automatisk stamspelare-beräkning"
+              >
+                Auto
+              </button>
+              <label className="flex items-center gap-2 cursor-pointer select-none" title="Sätt manuell stamspelare-override">
+                <span className="text-xs font-semibold" style={{ color: g.stamspelare ? "var(--color-gold)" : "var(--color-cream-muted)" }}>
+                  Stamspelare
+                </span>
+                <input
+                  type="checkbox"
+                  checked={g.stamspelare ?? false}
+                  onChange={e => stamspelareMutation.mutate({ id: g.id, stamspelare: e.target.checked })}
+                  className="accent-amber-400 w-4 h-4"
+                />
+              </label>
+            </div>
           </div>
         ))}
       </div>
@@ -161,16 +203,65 @@ function AdminGolfare() {
 function AdminBanor() {
   const { toast } = useToast();
   const { data: banor } = useQuery<Bana[]>({ queryKey: ["/api/banor"] });
-  const [form, setForm] = useState({ namn: "", ort: "", par: "72", slope: "113", kursrating: "72.0", langd: "" });
+  const emptyForm = { klubb: "", delbana: "", standardTee: "Blå", ort: "", par: "72", slope: "113", kursrating: "72.0", langd: "" };
+  const [form, setForm] = useState(emptyForm);
+  const [infoForm, setInfoForm] = useState(emptyForm);
   const [redigerarParId, setRedigerarParId] = useState<number | null>(null);
+  const [redigerarInfoId, setRedigerarInfoId] = useState<number | null>(null);
   const [parVarden, setParVarden] = useState<string[]>(Array(18).fill("4"));
+  const delbanaAlternativ = form.klubb ? (DELBANA_PRESETS[form.klubb] ?? []) : [];
+  const klubbHarIngenDelbana = KLUBBAR_UTAN_DELBANA.has(form.klubb);
+  const infoDelbanaAlternativ = infoForm.klubb ? (DELBANA_PRESETS[infoForm.klubb] ?? []) : [];
+  const infoKlubbHarIngenDelbana = KLUBBAR_UTAN_DELBANA.has(infoForm.klubb);
+
+  useEffect(() => {
+    if (!form.klubb) return;
+    if (klubbHarIngenDelbana && form.delbana) {
+      setForm(f => ({ ...f, delbana: "" }));
+      return;
+    }
+    if (delbanaAlternativ.length > 0 && !delbanaAlternativ.includes(form.delbana)) {
+      setForm(f => ({ ...f, delbana: "" }));
+    }
+  }, [form.klubb]);
+
+  useEffect(() => {
+    if (!infoForm.klubb) return;
+    if (infoKlubbHarIngenDelbana && infoForm.delbana) {
+      setInfoForm(f => ({ ...f, delbana: "" }));
+      return;
+    }
+    if (infoDelbanaAlternativ.length > 0 && !infoDelbanaAlternativ.includes(infoForm.delbana)) {
+      setInfoForm(f => ({ ...f, delbana: "" }));
+    }
+  }, [infoForm.klubb]);
+
+  function buildBanaPayload(values: typeof form) {
+    return {
+      ...values,
+      namn: values.delbana ? `${values.klubb} - ${values.delbana}` : values.klubb,
+      par: Number(values.par),
+      slope: Number(values.slope),
+      kursrating: Number(values.kursrating),
+      langd: values.langd ? Number(values.langd) : null,
+    };
+  }
 
   const addMutation = useMutation({
     mutationFn: (data: object) => apiRequest("POST", "/api/banor", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/banor"] });
       toast({ title: "Bana tillagd!" });
-      setForm({ namn: "", ort: "", par: "72", slope: "113", kursrating: "72.0", langd: "" });
+      setForm(emptyForm);
+    },
+  });
+
+  const saveInfoMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: object }) => apiRequest("PATCH", `/api/banor/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/banor"] });
+      toast({ title: "Baninfo uppdaterad!" });
+      setRedigerarInfoId(null);
     },
   });
 
@@ -193,19 +284,65 @@ function AdminBanor() {
     setParVarden(pars.map(String));
   }
 
+  function startRedigerarInfo(b: Bana) {
+    setRedigerarInfoId(b.id);
+    setInfoForm({
+      klubb: b.klubb ?? "",
+      delbana: b.delbana ?? "",
+      standardTee: b.standardTee ?? "Blå",
+      ort: b.ort ?? "",
+      par: String(b.par ?? 72),
+      slope: String(b.slope ?? 113),
+      kursrating: String(b.kursrating ?? 72),
+      langd: b.langd != null ? String(b.langd) : "",
+    });
+  }
+
   return (
     <div>
       <div className="card-vintage p-5 mb-6">
         <h2 className="heading-display text-base mb-4">Lägg till bana</h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          <input style={{ ...inputStyle }} placeholder="Bannamn" value={form.namn} onChange={e => setForm(f => ({ ...f, namn: e.target.value }))} />
+          <select style={{ ...inputStyle }} value={form.klubb} onChange={e => setForm(f => ({ ...f, klubb: e.target.value }))}>
+            <option value="">Välj klubb *</option>
+            {KLUBB_PRESETS.map(klubb => <option key={klubb} value={klubb}>{klubb}</option>)}
+          </select>
+          {klubbHarIngenDelbana ? (
+            <div
+              className="flex items-center rounded px-3"
+              style={{ ...inputStyle, paddingTop: "0.5rem", paddingBottom: "0.5rem", color: "var(--color-cream-muted)" }}
+            >
+              Delbana behövs inte för {form.klubb}
+            </div>
+          ) : delbanaAlternativ.length > 0 ? (
+            <select
+              style={{ ...inputStyle }}
+              value={form.delbana}
+              onChange={e => setForm(f => ({ ...f, delbana: e.target.value }))}
+              disabled={!form.klubb}
+            >
+              <option value="">Välj delbana (valfritt)</option>
+              {delbanaAlternativ.map(delbana => <option key={delbana} value={delbana}>{delbana}</option>)}
+            </select>
+          ) : (
+            <input
+              style={{ ...inputStyle }}
+              placeholder="Delbana (valfritt)"
+              value={form.delbana}
+              onChange={e => setForm(f => ({ ...f, delbana: e.target.value }))}
+              disabled={!form.klubb}
+            />
+          )}
           <input style={{ ...inputStyle }} placeholder="Ort" value={form.ort} onChange={e => setForm(f => ({ ...f, ort: e.target.value }))} />
+          <select style={{ ...inputStyle }} value={form.standardTee} onChange={e => setForm(f => ({ ...f, standardTee: e.target.value }))}>
+            {TEE_PRESETS.map(tee => <option key={tee} value={tee}>{tee} tee</option>)}
+          </select>
           <input style={{ ...inputStyle }} type="number" placeholder="Par (72)" value={form.par} onChange={e => setForm(f => ({ ...f, par: e.target.value }))} />
           <input style={{ ...inputStyle }} type="number" placeholder="Slope (113)" value={form.slope} onChange={e => setForm(f => ({ ...f, slope: e.target.value }))} />
           <input style={{ ...inputStyle }} type="number" placeholder="Kursrating (72.0)" value={form.kursrating} onChange={e => setForm(f => ({ ...f, kursrating: e.target.value }))} />
           <input style={{ ...inputStyle }} type="number" placeholder="Längd meter" value={form.langd} onChange={e => setForm(f => ({ ...f, langd: e.target.value }))} />
         </div>
-        <button onClick={() => addMutation.mutate({ ...form, par: Number(form.par), slope: Number(form.slope), kursrating: Number(form.kursrating), langd: form.langd ? Number(form.langd) : null })} disabled={!form.namn} className="mt-3 px-5 py-2 rounded text-sm font-bold" style={{ background: "var(--color-gold)", color: "var(--color-green-dark)" }}>
+        <button onClick={() => addMutation.mutate(buildBanaPayload(form))} disabled={!form.klubb} className="mt-3 px-5 py-2 rounded text-sm font-bold" style={{ background: "var(--color-gold)", color: "var(--color-green-dark)" }}>
           Lägg till
         </button>
       </div>
@@ -220,18 +357,65 @@ function AdminBanor() {
             <div key={b.id} className="card-vintage overflow-hidden">
               <div className="px-4 py-3 flex items-center justify-between gap-3">
                 <div className="flex-1">
-                  <div className="font-semibold text-sm" style={{ color: "var(--color-cream)" }}>{b.namn}</div>
+                  <div className="font-semibold text-sm" style={{ color: "var(--color-cream)" }}>{formatBanaNamn(b)}</div>
                   <div className="text-xs mt-0.5" style={{ color: "var(--color-cream-muted)" }}>
-                    {b.ort} · Par {totPar} · Slope {b.slope}
+                    {b.ort} · Par {totPar} · Slope {b.slope} · Tee {b.standardTee ?? "Blå"}
                     {harPar && <span style={{ color: "var(--color-gold)" }}> · Par/hål inlagt</span>}
                   </div>
                 </div>
-                <button onClick={() => redigerarParId === b.id ? setRedigerarParId(null) : startRedigerarPar(b)}
-                  className="text-xs px-3 py-1 rounded font-semibold"
-                  style={{ background: "rgba(201,162,39,0.15)", color: "var(--color-gold)", border: "1px solid rgba(201,162,39,0.3)" }}>
-                  {redigerarParId === b.id ? "Stäng" : harPar ? "Ändra par/hål" : "Lägg in par/hål"}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => redigerarInfoId === b.id ? setRedigerarInfoId(null) : startRedigerarInfo(b)}
+                    className="text-xs px-3 py-1 rounded font-semibold"
+                    style={{ background: "rgba(255,255,255,0.08)", color: "var(--color-cream-muted)", border: "1px solid rgba(201,162,39,0.2)" }}>
+                    {redigerarInfoId === b.id ? "Stäng info" : "Redigera info"}
+                  </button>
+                  <button onClick={() => redigerarParId === b.id ? setRedigerarParId(null) : startRedigerarPar(b)}
+                    className="text-xs px-3 py-1 rounded font-semibold"
+                    style={{ background: "rgba(201,162,39,0.15)", color: "var(--color-gold)", border: "1px solid rgba(201,162,39,0.3)" }}>
+                    {redigerarParId === b.id ? "Stäng par" : harPar ? "Ändra par/hål" : "Lägg in par/hål"}
+                  </button>
+                </div>
               </div>
+
+              {redigerarInfoId === b.id && (
+                <div className="px-4 pb-4">
+                  <div className="text-xs mb-2 font-semibold uppercase tracking-widest" style={{ color: "var(--color-gold)" }}>Baninfo</div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
+                    <select style={{ ...inputStyle }} value={infoForm.klubb} onChange={e => setInfoForm(f => ({ ...f, klubb: e.target.value }))}>
+                      <option value="">Välj klubb *</option>
+                      {KLUBB_PRESETS.map(klubb => <option key={klubb} value={klubb}>{klubb}</option>)}
+                    </select>
+                    {infoKlubbHarIngenDelbana ? (
+                      <div className="flex items-center rounded px-3" style={{ ...inputStyle, paddingTop: "0.5rem", paddingBottom: "0.5rem", color: "var(--color-cream-muted)" }}>
+                        Delbana behövs inte för {infoForm.klubb}
+                      </div>
+                    ) : infoDelbanaAlternativ.length > 0 ? (
+                      <select style={{ ...inputStyle }} value={infoForm.delbana} onChange={e => setInfoForm(f => ({ ...f, delbana: e.target.value }))}>
+                        <option value="">Välj delbana (valfritt)</option>
+                        {infoDelbanaAlternativ.map(delbana => <option key={delbana} value={delbana}>{delbana}</option>)}
+                      </select>
+                    ) : (
+                      <input style={{ ...inputStyle }} placeholder="Delbana (valfritt)" value={infoForm.delbana} onChange={e => setInfoForm(f => ({ ...f, delbana: e.target.value }))} />
+                    )}
+                    <input style={{ ...inputStyle }} placeholder="Ort" value={infoForm.ort} onChange={e => setInfoForm(f => ({ ...f, ort: e.target.value }))} />
+                    <select style={{ ...inputStyle }} value={infoForm.standardTee} onChange={e => setInfoForm(f => ({ ...f, standardTee: e.target.value }))}>
+                      {TEE_PRESETS.map(tee => <option key={tee} value={tee}>{tee} tee</option>)}
+                    </select>
+                    <input style={{ ...inputStyle }} type="number" placeholder="Par" value={infoForm.par} onChange={e => setInfoForm(f => ({ ...f, par: e.target.value }))} />
+                    <input style={{ ...inputStyle }} type="number" placeholder="Slope" value={infoForm.slope} onChange={e => setInfoForm(f => ({ ...f, slope: e.target.value }))} />
+                    <input style={{ ...inputStyle }} type="number" placeholder="Kursrating" value={infoForm.kursrating} onChange={e => setInfoForm(f => ({ ...f, kursrating: e.target.value }))} />
+                    <input style={{ ...inputStyle }} type="number" placeholder="Längd meter" value={infoForm.langd} onChange={e => setInfoForm(f => ({ ...f, langd: e.target.value }))} />
+                  </div>
+                  <button
+                    onClick={() => saveInfoMutation.mutate({ id: b.id, data: buildBanaPayload(infoForm) })}
+                    disabled={!infoForm.klubb || saveInfoMutation.isPending}
+                    className="px-4 py-1.5 rounded text-sm font-bold"
+                    style={{ background: "var(--color-gold)", color: "var(--color-green-dark)" }}
+                  >
+                    Spara baninfo
+                  </button>
+                </div>
+              )}
 
               {redigerarParId === b.id && (
                 <div className="px-4 pb-4">
@@ -311,6 +495,19 @@ function AdminTavlingar() {
     },
   });
 
+  const deleteTavlingMutation = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/tavlingar/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tavlingar"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/order-of-merit"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/rundor"] });
+      toast({ title: "Tävling raderad" });
+    },
+    onError: () => {
+      toast({ title: "Fel", description: "Kunde inte radera tävlingen." });
+    },
+  });
+
   const inputStyle = { background: "var(--color-green-light)", border: "1px solid rgba(201,162,39,0.3)", borderRadius: "0.375rem", color: "var(--color-cream)", padding: "0.5rem 0.75rem", width: "100%", fontSize: "0.875rem" };
 
   const sorterade = [...(tavlingar ?? [])].sort((a, b) => a.datum.localeCompare(b.datum));
@@ -340,7 +537,7 @@ function AdminTavlingar() {
           <input style={inputStyle} type="date" value={form.datum} onChange={e => setForm(f => ({ ...f, datum: e.target.value }))} />
           <select style={inputStyle} value={form.banaId} onChange={e => setForm(f => ({ ...f, banaId: e.target.value }))}>
             <option value="">Välj bana (valfritt)</option>
-            {banor?.map(b => <option key={b.id} value={b.id}>{b.namn}</option>)}
+            {banor?.map(b => <option key={b.id} value={b.id}>{formatBanaNamn(b)}</option>)}
           </select>
           <input style={inputStyle} placeholder="Beskrivning (valfritt)" value={form.beskrivning} onChange={e => setForm(f => ({ ...f, beskrivning: e.target.value }))} />
         </div>
@@ -387,6 +584,17 @@ function AdminTavlingar() {
                   >
                     Redigera
                   </button>
+                  <button
+                    onClick={() => {
+                      const ok = window.confirm(`Radera tävlingen \"${t.namn}\"?\n\nAllt kopplat raderas också:\n- Tävlingsresultat\n- Rundor\n\nDetta går inte att ångra.`);
+                      if (!ok) return;
+                      deleteTavlingMutation.mutate(t.id);
+                    }}
+                    className="text-xs px-2 py-1 rounded font-semibold hover:opacity-80 transition-opacity"
+                    style={{ background: "rgba(220, 38, 38, 0.2)", color: "#fecaca", border: "1px solid rgba(248,113,113,0.5)" }}
+                  >
+                    Radera
+                  </button>
                 </div>
               </div>
             ) : (
@@ -397,7 +605,7 @@ function AdminTavlingar() {
                   <input style={inputStyle} type="date" value={redigForm.datum} onChange={e => setRedigForm(f => ({ ...f, datum: e.target.value }))} />
                   <select style={inputStyle} value={redigForm.banaId} onChange={e => setRedigForm(f => ({ ...f, banaId: e.target.value }))}>
                     <option value="">Välj bana (valfritt)</option>
-                    {banor?.map(b => <option key={b.id} value={b.id}>{b.namn}</option>)}
+                    {banor?.map(b => <option key={b.id} value={b.id}>{formatBanaNamn(b)}</option>)}
                   </select>
                   <input style={inputStyle} placeholder="Beskrivning (valfritt)" value={redigForm.beskrivning} onChange={e => setRedigForm(f => ({ ...f, beskrivning: e.target.value }))} />
                 </div>
@@ -462,6 +670,28 @@ function AdminResultat() {
     },
   });
 
+  const deleteResultatMutation = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/tavlingsresultat/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tavlingar", valtTavlingId, "resultat"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/order-of-merit"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/rundor"] });
+      toast({ title: "Resultat raderat" });
+    },
+    onError: () => toast({ title: "Fel", description: "Kunde inte radera resultatet." }),
+  });
+
+  const clearResultatMutation = useMutation({
+    mutationFn: (tavlingId: number) => apiRequest("DELETE", `/api/tavlingar/${tavlingId}/resultat`),
+    onSuccess: async () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tavlingar", valtTavlingId, "resultat"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/order-of-merit"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/rundor"] });
+      toast({ title: "Alla resultat raderade" });
+    },
+    onError: () => toast({ title: "Fel", description: "Kunde inte rensa resultaten." }),
+  });
+
   const inputStyle = { background: "var(--color-green-light)", border: "1px solid rgba(201,162,39,0.3)", borderRadius: "0.375rem", color: "var(--color-cream)", padding: "0.5rem 0.75rem", width: "100%", fontSize: "0.875rem" };
 
   return (
@@ -496,12 +726,25 @@ function AdminResultat() {
 
       {valtTavlingId && befintligaResultat && befintligaResultat.length > 0 && (
         <div>
-          <h2 className="heading-display text-base mb-3">Resultat: {valdTavling?.namn}</h2>
+          <div className="flex items-center justify-between mb-3 gap-3">
+            <h2 className="heading-display text-base">Resultat: {valdTavling?.namn}</h2>
+            <button
+              onClick={() => {
+                const ok = window.confirm("Rensa alla resultat för vald tävling?\n\nDetta raderar alla tävlingsresultat och kopplade rundor för tävlingen.");
+                if (!ok) return;
+                clearResultatMutation.mutate(Number(valtTavlingId));
+              }}
+              className="text-xs px-3 py-1 rounded font-semibold"
+              style={{ background: "rgba(220, 38, 38, 0.2)", color: "#fecaca", border: "1px solid rgba(248,113,113,0.5)" }}
+            >
+              Rensa alla resultat
+            </button>
+          </div>
           <div className="card-vintage overflow-hidden">
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ borderBottom: "1px solid rgba(201,162,39,0.2)" }}>
-                  {["Golfare", "Brutto", "Netto", "H-HCP", "OoM"].map(h => (
+                  {["Golfare", "Brutto", "Netto", "H-HCP", "OoM", ""].map(h => (
                     <th key={h} className="px-4 py-3 text-left font-semibold" style={{ color: "var(--color-gold)" }}>{h}</th>
                   ))}
                 </tr>
@@ -514,6 +757,19 @@ function AdminResultat() {
                     <td className="px-4 py-2 font-mono font-bold" style={{ color: "var(--color-gold)" }}>{r.nettoscore != null ? Math.round(r.nettoscore) : "–"}</td>
                     <td className="px-4 py-2 font-mono text-xs" style={{ color: "var(--color-cream-muted)" }}>{r.hickoryHandicapVid.toFixed(1)}</td>
                     <td className="px-4 py-2" style={{ color: "var(--color-cream-muted)" }}>{r.orderOfMeritPoang ?? "–"}</td>
+                    <td className="px-4 py-2 text-right">
+                      <button
+                        onClick={() => {
+                          const ok = window.confirm("Radera detta resultat?\n\nKopplad tävlingsrunda för spelaren tas också bort.");
+                          if (!ok) return;
+                          deleteResultatMutation.mutate(r.id);
+                        }}
+                        className="text-xs px-2 py-1 rounded font-semibold"
+                        style={{ background: "rgba(220, 38, 38, 0.2)", color: "#fecaca", border: "1px solid rgba(248,113,113,0.5)" }}
+                      >
+                        Radera
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -975,7 +1231,7 @@ function NyTavlingFlode({ editTavlingId, onClose }: { editTavlingId?: number; on
             <input style={inputStyle} type="date" value={tavlingForm.datum} onChange={e => setTavlingForm(f => ({ ...f, datum: e.target.value }))} disabled={!!editTavlingId} />
             <select style={inputStyle} value={tavlingForm.banaId} onChange={e => setTavlingForm(f => ({ ...f, banaId: e.target.value }))} disabled={!!editTavlingId}>
               <option value="">Välj bana (valfritt)</option>
-              {banor?.map(b => <option key={b.id} value={b.id}>{b.namn}</option>)}
+              {banor?.map(b => <option key={b.id} value={b.id}>{formatBanaNamn(b)}</option>)}
             </select>
             <input style={inputStyle} placeholder="Beskrivning (valfritt)" value={tavlingForm.beskrivning} onChange={e => setTavlingForm(f => ({ ...f, beskrivning: e.target.value }))} disabled={!!editTavlingId} />
           </div>

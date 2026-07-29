@@ -35,6 +35,9 @@ export default function OrderOfMerit() {
         <p className="text-sm mt-2" style={{ color: "var(--color-cream-muted)" }}>
           Samlad ställning för WCS. Brutto visas först som standard.
         </p>
+        <p className="text-xs mt-2" style={{ color: "var(--color-cream-muted)" }}>
+          Regel: Endast spelarens sex bästa OoM-resultat räknas i totalen.
+        </p>
       </div>
 
       <div className="flex items-center justify-between mb-5">

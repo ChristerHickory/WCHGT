@@ -11,6 +11,14 @@ import { apiRequest } from "@/lib/queryClient";
 type ProfilResultat = { tavling: Tavling; resultat: Tavlingsresultat };
 
 const månader = ["jan","feb","mar","apr","maj","jun","jul","aug","sep","okt","nov","dec"];
+const OOM_BEST_COUNT = 6;
+
+function sumBest(values: number[], count: number): number {
+  return [...values]
+    .sort((a, b) => b - a)
+    .slice(0, count)
+    .reduce((sum, value) => sum + value, 0);
+}
 
 function formatDatum(datum: string) {
   const [, mm, dd] = datum.split("-");
@@ -67,8 +75,8 @@ export default function SpelareProfil() {
     ? [...resultatLista].sort((a, b) => a.tavling.datum.localeCompare(b.tavling.datum))
     : [];
 
-  const totalOomPoang = kronologisk.reduce((s, r) => s + (r.resultat.orderOfMeritPoang ?? 0), 0);
-  const totalBruttoPoang = kronologisk.reduce((s, r) => s + (r.resultat.bruttoOmPoang ?? 0), 0);
+  const totalOomPoang = sumBest(kronologisk.map(r => r.resultat.orderOfMeritPoang ?? 0), OOM_BEST_COUNT);
+  const totalBruttoPoang = sumBest(kronologisk.map(r => r.resultat.bruttoOmPoang ?? 0), OOM_BEST_COUNT);
 
   // Data till grafen
   const grafData = kronologisk.map((r, i) => {
@@ -126,13 +134,13 @@ export default function SpelareProfil() {
             </div>
           </div>
           <div>
-            <div className="text-xs tracking-widest uppercase mb-1" style={{ color: "var(--color-gold)" }}>OoM-poäng netto</div>
+            <div className="text-xs tracking-widest uppercase mb-1" style={{ color: "var(--color-gold)" }}>OoM-poäng netto (bästa 6)</div>
             <div className="font-bold font-mono text-lg" style={{ color: "var(--color-gold)" }}>
               {totalOomPoang}p
             </div>
           </div>
           <div>
-            <div className="text-xs tracking-widest uppercase mb-1" style={{ color: "var(--color-gold)" }}>OoM-poäng brutto</div>
+            <div className="text-xs tracking-widest uppercase mb-1" style={{ color: "var(--color-gold)" }}>OoM-poäng brutto (bästa 6)</div>
             <div className="font-bold font-mono text-lg" style={{ color: "var(--color-gold)" }}>
               {totalBruttoPoang}p
             </div>
