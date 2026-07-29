@@ -1000,7 +1000,7 @@ function NyTavlingFlode({ editTavlingId, onClose }: { editTavlingId?: number; on
         namn: alleGolfare?.find(g => g.id === r.golfareId)?.namn ?? `Golfare ${r.golfareId}`,
         hhcp: r.hickoryHandicapVid,
         brutto: r.bruttoscore ? String(r.bruttoscore) : "",
-        countback: r.countback ?? [],
+        countback: [],
       }));
       setDeltagare(newDeltagare);
     }
@@ -1009,7 +1009,10 @@ function NyTavlingFlode({ editTavlingId, onClose }: { editTavlingId?: number; on
   const inputStyle = { background: "var(--color-green-light)", border: "1px solid rgba(201,162,39,0.3)", borderRadius: "0.375rem", color: "var(--color-cream)", padding: "0.5rem 0.75rem", width: "100%", fontSize: "0.875rem" };
 
   const skapasTavlingMutation = useMutation({
-    mutationFn: (data: object) => apiRequest("POST", "/api/tavlingar", data),
+    mutationFn: async (data: object): Promise<Tavling> => {
+      const res = await apiRequest("POST", "/api/tavlingar", data);
+      return res.json();
+    },
     onSuccess: (data: Tavling) => {
       setSkapadTavlingId(data.id);
       queryClient.invalidateQueries({ queryKey: ["/api/tavlingar"] });
@@ -1081,14 +1084,14 @@ function NyTavlingFlode({ editTavlingId, onClose }: { editTavlingId?: number; on
   function hittaLika(typ: "brutto" | "netto"): number[] {
     const placer = typ === "brutto" ? bruttoPlacer : nettoPlacer;
     const groups = new Map<number, number[]>();
-    for (const [gId, plats] of placer.entries()) {
+    placer.forEach((plats, gId) => {
       if (!groups.has(plats)) groups.set(plats, []);
       groups.get(plats)!.push(gId);
-    }
-    for (const [, ids] of groups.entries()) {
+    });
+    for (const ids of groups.values()) {
       if (ids.length > 1) {
         // Kolla om de saknar countback
-        const saknarCb = ids.filter(id => {
+        const saknarCb = ids.filter((id: number) => {
           const d = deltagare.find(x => x.golfareId === id);
           return !d || d.countback.length === 0;
         });

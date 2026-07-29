@@ -462,7 +462,7 @@ function NyRunda() {
 function Historik() {
   const { data: alleGolfare } = useQuery<Golfare[]>({ queryKey: ["/api/golfare/alla"] });
   const [valdGolfareId, setValdGolfareId] = useState<number | "">("");
-  const { data: rundor, isLoading } = useQuery({
+  const { data: rundor, isLoading } = useQuery<any[]>({
     queryKey: ["/api/rundor/golfare", valdGolfareId],
     enabled: !!valdGolfareId,
   });
@@ -480,9 +480,9 @@ function Historik() {
         }).map(g => <option key={g.id} value={g.id}>{g.namn}{g.stamspelare ? " ★" : ""}</option>)}
       </select>
       {isLoading && <div style={{ color: "var(--color-cream-muted)" }}>Laddar...</div>}
-      {rundor && (rundor as any[]).length === 0 && <div style={{ color: "var(--color-cream-muted)" }}>Inga rundor registrerade.</div>}
+      {rundor && rundor.length === 0 && <div style={{ color: "var(--color-cream-muted)" }}>Inga rundor registrerade.</div>}
       <div className="flex flex-col gap-2">
-        {(rundor as any[] ?? []).map((r: any) => (
+        {(rundor ?? []).map((r: any) => (
           <div key={r.id} className="card-vintage px-4 py-3 flex items-center justify-between">
             <div>
               <div className="font-semibold text-sm" style={{ color: "var(--color-cream)" }}>{r.datum}</div>

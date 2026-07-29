@@ -202,9 +202,9 @@ function calculateAutoStamspelareMap(): Map<number, boolean> {
   }
 
   const autoMap = new Map<number, boolean>();
-  for (const [golfareId, tavSet] of playedByGolfare.entries()) {
+  playedByGolfare.forEach((tavSet, golfareId) => {
     autoMap.set(golfareId, tavSet.size / totalOom >= 0.5);
-  }
+  });
   return autoMap;
 }
 
@@ -404,9 +404,9 @@ export const storage: IStorage = {
     const resultat: { tavling: Tavling; nettoRang: number; bruttoRang: number; nettoPoangAck: number; bruttoPoangAck: number }[] = [];
 
     // Ackumulerade poäng per spelare upp till och med varje tävling
-    const alleSpelareIds = [...new Set(
+    const alleSpelareIds = Array.from(new Set(
       db.select().from(tavlingsresultat).all().map(r => r.golfareId)
-    )];
+    ));
 
     for (let i = 0; i < oomTav.length; i++) {
       const tav = oomTav[i];
@@ -428,8 +428,8 @@ export const storage: IStorage = {
       }
 
       // Räkna ut rang
-      const nettoSorterad = [...poangPerSpelare.entries()].sort((a, b) => b[1].netto - a[1].netto);
-      const bruttoSorterad = [...poangPerSpelare.entries()].sort((a, b) => b[1].brutto - a[1].brutto);
+      const nettoSorterad = Array.from(poangPerSpelare.entries()).sort((a, b) => b[1].netto - a[1].netto);
+      const bruttoSorterad = Array.from(poangPerSpelare.entries()).sort((a, b) => b[1].brutto - a[1].brutto);
       const nettoRang = nettoSorterad.findIndex(([id]) => id === golfareId) + 1;
       const bruttoRang = bruttoSorterad.findIndex(([id]) => id === golfareId) + 1;
       const spelarPoang = poangPerSpelare.get(golfareId) ?? { netto: 0, brutto: 0 };
@@ -474,10 +474,10 @@ export const storage: IStorage = {
       }).returning().get();
       saved.push(row);
       // Insert as runda
-      if (tav) {
+      if (tav?.banaId) {
         db.insert(rundor).values({
           golfareId: r.golfareId,
-          banaId: tav.banaId ?? null,
+          banaId: tav.banaId,
           datum: tav.datum,
           bruttoscore: r.bruttoscore,
           nettoscore: r.nettoscore,

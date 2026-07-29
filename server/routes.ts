@@ -44,7 +44,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const parsed = insertGolfareSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error });
     // Beräkna hickory-handicap: 1.4 × standardhandicap
-    const data = { ...parsed.data, hickoryHandicap: parsed.data.standardHandicap * 1.4 };
+    const standardHandicap = parsed.data.standardHandicap ?? 36;
+    const data = { ...parsed.data, standardHandicap, hickoryHandicap: standardHandicap * 1.4 };
     res.status(201).json(storage.createGolfare(data));
   });
   // PATCH par per hål på bana
