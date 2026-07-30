@@ -648,8 +648,9 @@ function AdminTavlingar() {
 function AdminResultat() {
   const { toast } = useToast();
   const { data: tavlingar } = useQuery<Tavling[]>({ queryKey: ["/api/tavlingar"] });
-  const { data: golfare } = useQuery<Golfare[]>({ queryKey: ["/api/golfare"] });
+  const { data: golfare } = useQuery<Golfare[]>({ queryKey: ["/api/golfare/alla"] });
   const [valtTavlingId, setValtTavlingId] = useState("");
+  const [sortering, setSortering] = useState<"namn" | "brutto" | "netto" | "oomNetto" | "oomBrutto">("netto");
   const [form, setForm] = useState({ golfareId: "", bruttoscore: "", orderOfMeritPoang: "" });
 
   const valdTavling = tavlingar?.find(t => t.id === Number(valtTavlingId));
@@ -693,6 +694,39 @@ function AdminResultat() {
   });
 
   const inputStyle = { background: "var(--color-green-light)", border: "1px solid rgba(201,162,39,0.3)", borderRadius: "0.375rem", color: "var(--color-cream)", padding: "0.5rem 0.75rem", width: "100%", fontSize: "0.875rem" };
+  const golfareMap = new Map((golfare ?? []).map(g => [g.id, g] as const));
+
+  function namnForResultat(r: Tavlingsresultat): string {
+    return golfareMap.get(r.golfareId)?.namn ?? r.golfareNamnVid ?? `Golfare #${r.golfareId}`;
+  }
+
+  const sorteradeResultat = [...(befintligaResultat ?? [])].sort((a, b) => {
+    if (sortering === "namn") {
+      return namnForResultat(a).localeCompare(namnForResultat(b), "sv");
+    }
+    if (sortering === "oomNetto") {
+      const aPoang = a.orderOfMeritPoang ?? Number.NEGATIVE_INFINITY;
+      const bPoang = b.orderOfMeritPoang ?? Number.NEGATIVE_INFINITY;
+      if (aPoang !== bPoang) return bPoang - aPoang;
+      return namnForResultat(a).localeCompare(namnForResultat(b), "sv");
+    }
+    if (sortering === "oomBrutto") {
+      const aPoang = a.bruttoOmPoang ?? Number.NEGATIVE_INFINITY;
+      const bPoang = b.bruttoOmPoang ?? Number.NEGATIVE_INFINITY;
+      if (aPoang !== bPoang) return bPoang - aPoang;
+      return namnForResultat(a).localeCompare(namnForResultat(b), "sv");
+    }
+    if (sortering === "brutto") {
+      const aScore = a.bruttoscore ?? Number.POSITIVE_INFINITY;
+      const bScore = b.bruttoscore ?? Number.POSITIVE_INFINITY;
+      if (aScore !== bScore) return aScore - bScore;
+      return namnForResultat(a).localeCompare(namnForResultat(b), "sv");
+    }
+    const aScore = a.nettoscore ?? Number.POSITIVE_INFINITY;
+    const bScore = b.nettoscore ?? Number.POSITIVE_INFINITY;
+    if (aScore !== bScore) return aScore - bScore;
+    return namnForResultat(a).localeCompare(namnForResultat(b), "sv");
+  });
 
   return (
     <div>
@@ -727,7 +761,21 @@ function AdminResultat() {
       {valtTavlingId && befintligaResultat && befintligaResultat.length > 0 && (
         <div>
           <div className="flex items-center justify-between mb-3 gap-3">
-            <h2 className="heading-display text-base">Resultat: {valdTavling?.namn}</h2>
+            <div className="flex items-center gap-3">
+              <h2 className="heading-display text-base">Resultat: {valdTavling?.namn}</h2>
+              <select
+                value={sortering}
+                onChange={e => setSortering(e.target.value as "namn" | "brutto" | "netto" | "oomNetto" | "oomBrutto")}
+                className="rounded px-2 py-1 text-xs"
+                style={{ background: "var(--color-green-light)", border: "1px solid rgba(201,162,39,0.3)", color: "var(--color-cream)" }}
+              >
+                <option value="namn">Sortera: Namn A-Ö</option>
+                <option value="brutto">Sortera: Brutto (lägst först)</option>
+                <option value="netto">Sortera: Netto (lägst först)</option>
+                <option value="oomNetto">Sortera: OoM Netto (högst först)</option>
+                <option value="oomBrutto">Sortera: OoM Brutto (högst först)</option>
+              </select>
+            </div>
             <button
               onClick={() => {
                 const ok = window.confirm("Rensa alla resultat för vald tävling?\n\nDetta raderar alla tävlingsresultat och kopplade rundor för tävlingen.");
@@ -744,19 +792,20 @@ function AdminResultat() {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ borderBottom: "1px solid rgba(201,162,39,0.2)" }}>
-                  {["Golfare", "Brutto", "Netto", "H-HCP", "OoM", ""].map(h => (
+                  {["Golfare", "Brutto", "Netto", "H-HCP", "OoM Netto", "OoM Brutto", ""].map(h => (
                     <th key={h} className="px-4 py-3 text-left font-semibold" style={{ color: "var(--color-gold)" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {befintligaResultat.map((r, i) => (
+                {sorteradeResultat.map((r, i) => (
                   <tr key={r.id} style={{ borderBottom: "1px solid rgba(201,162,39,0.06)" }}>
-                    <td className="px-4 py-2" style={{ color: "var(--color-cream)" }}>{golfare?.find(g => g.id === r.golfareId)?.namn ?? "Okänd"}</td>
+                    <td className="px-4 py-2" style={{ color: "var(--color-cream)" }}>{namnForResultat(r)}</td>
                     <td className="px-4 py-2 font-mono" style={{ color: "var(--color-cream)" }}>{r.bruttoscore}</td>
-                    <td className="px-4 py-2 font-mono font-bold" style={{ color: "var(--color-gold)" }}>{r.nettoscore != null ? Math.round(r.nettoscore) : "–"}</td>
+                    <td className="px-4 py-2 font-mono font-bold" style={{ color: "var(--color-gold)" }}>{r.nettoscore != null ? Number(r.nettoscore).toFixed(1) : "–"}</td>
                     <td className="px-4 py-2 font-mono text-xs" style={{ color: "var(--color-cream-muted)" }}>{r.hickoryHandicapVid.toFixed(1)}</td>
                     <td className="px-4 py-2" style={{ color: "var(--color-cream-muted)" }}>{r.orderOfMeritPoang ?? "–"}</td>
+                    <td className="px-4 py-2" style={{ color: "var(--color-cream-muted)" }}>{r.bruttoOmPoang ?? "–"}</td>
                     <td className="px-4 py-2 text-right">
                       <button
                         onClick={() => {
@@ -788,9 +837,26 @@ type Steg = 1 | 2 | 3 | 4;
 interface Deltagare {
   golfareId: number;
   namn: string;
+  standardHcp: number;
   hhcp: number;
+  arMedIResultat: boolean;
   brutto: string;
   countback: number[]; // hål 10-18 vid behov
+}
+
+function roundOne(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+function beraknaBanaHandicap(standardHcp: number, slope: number, cr: number, par: number): number {
+  // WHS-style approximation: HCP-index * (slope/113) + (CR - par)
+  return roundOne((standardHcp * (slope / 113)) + (cr - par));
+}
+
+function arMisstanktFallbackStandardHcp(standardHcp: number, hickoryHcp: number): boolean {
+  // Historical imports often used 36 as a fallback for unknown standard HCP.
+  // If H-HCP is low, 36 is very unlikely to be the real value.
+  return standardHcp === 36 && Number.isFinite(hickoryHcp) && hickoryHcp < 30;
 }
 
 function oomPoang(plats: number, antalDeltagare: number): number {
@@ -808,32 +874,38 @@ function raknaPlaceringar(
   deltagare: Deltagare[],
   typ: "brutto" | "netto"
 ): Map<number, number> {
+  const compareResultat = (
+    a: { golfareId: number; score: number; countback: number[] },
+    b: { golfareId: number; score: number; countback: number[] }
+  ): number => {
+    if (a.score !== b.score) return a.score - b.score;
+    if (typ === "netto") return 0;
+    // Countback: jämför sista 9, 6, 3, 1 om tillgängligt
+    const windows = [9, 6, 3, 1];
+    for (const w of windows) {
+      if (a.countback.length >= w && b.countback.length >= w) {
+        const aSum = a.countback.slice(-w).reduce((s, v) => s + v, 0);
+        const bSum = b.countback.slice(-w).reduce((s, v) => s + v, 0);
+        if (aSum !== bSum) return aSum - bSum;
+      }
+    }
+    return 0;
+  };
+
   const sorted = [...deltagare]
-    .filter(d => d.brutto !== "")
+    .filter(d => d.arMedIResultat && d.brutto !== "")
     .map(d => {
       const brutto = Number(d.brutto);
-      const netto = Math.round(brutto - d.hhcp);
+      const netto = roundOne(brutto - d.hhcp);
       const score = typ === "brutto" ? brutto : netto;
       return { golfareId: d.golfareId, score, countback: d.countback };
     })
-    .sort((a, b) => {
-      if (a.score !== b.score) return a.score - b.score;
-      // Countback: jämför sista 9, 6, 3, 1 om tillgängligt
-      const windows = [9, 6, 3, 1];
-      for (const w of windows) {
-        if (a.countback.length >= w && b.countback.length >= w) {
-          const aSum = a.countback.slice(-w).reduce((s, v) => s + v, 0);
-          const bSum = b.countback.slice(-w).reduce((s, v) => s + v, 0);
-          if (aSum !== bSum) return aSum - bSum;
-        }
-      }
-      return 0;
-    });
+    .sort(compareResultat);
 
   const placMap = new Map<number, number>();
   let plats = 1;
   for (let i = 0; i < sorted.length; i++) {
-    if (i > 0 && sorted[i].score === sorted[i - 1].score) {
+    if (i > 0 && compareResultat(sorted[i], sorted[i - 1]) === 0) {
       // Dela placeringen med föregående
       placMap.set(sorted[i].golfareId, placMap.get(sorted[i - 1].golfareId)!);
     } else {
@@ -956,6 +1028,19 @@ function matchGolfare(namn: string, alleGolfare: Golfare[]): Golfare | undefined
   return bestMatch?.golfare;
 }
 
+function parseCountbackVid(value: string | null | undefined): number[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((v) => Number(v))
+      .filter((v) => Number.isFinite(v) && v > 0);
+  } catch {
+    return [];
+  }
+}
+
 function NyTavlingFlode({ editTavlingId, onClose }: { editTavlingId?: number; onClose?: () => void } = {}) {
   const { toast } = useToast();
   const { data: alleGolfare } = useQuery<Golfare[]>({ queryKey: ["/api/golfare/alla"] });
@@ -975,6 +1060,11 @@ function NyTavlingFlode({ editTavlingId, onClose }: { editTavlingId?: number; on
   const [showImportModal, setShowImportModal] = useState(false);
   const [importText, setImportText] = useState("");
   const [importPreview, setImportPreview] = useState<ImportPreviewRow[]>([]);
+  const [teeSteg3, setTeeSteg3] = useState("Blå");
+  const [crSteg3, setCrSteg3] = useState("");
+  const [slopeSteg3, setSlopeSteg3] = useState("");
+  const [parSteg3, setParSteg3] = useState("");
+  const [sorteringSteg3, setSorteringSteg3] = useState<"namn" | "brutto" | "netto">("namn");
 
   // Load existing tournament data when in edit mode
   const { data: existingTavling } = useQuery<Tavling>({
@@ -998,13 +1088,29 @@ function NyTavlingFlode({ editTavlingId, onClose }: { editTavlingId?: number; on
       const newDeltagare: Deltagare[] = befintligaResultat.map(r => ({
         golfareId: r.golfareId,
         namn: alleGolfare?.find(g => g.id === r.golfareId)?.namn ?? `Golfare ${r.golfareId}`,
+        standardHcp: r.standardHcpVid ?? alleGolfare?.find(g => g.id === r.golfareId)?.standardHandicap ?? roundOne(r.hickoryHandicapVid / 1.4),
         hhcp: r.hickoryHandicapVid,
+        arMedIResultat: true,
         brutto: r.bruttoscore ? String(r.bruttoscore) : "",
-        countback: [],
+        countback: parseCountbackVid(r.countbackVid),
       }));
       setDeltagare(newDeltagare);
+      if (existingTavling.hcpTee) setTeeSteg3(existingTavling.hcpTee);
+      if (existingTavling.hcpCr != null) setCrSteg3(String(existingTavling.hcpCr));
+      if (existingTavling.hcpSlope != null) setSlopeSteg3(String(existingTavling.hcpSlope));
+      if (existingTavling.hcpPar != null) setParSteg3(String(existingTavling.hcpPar));
     }
   }, [editTavlingId, existingTavling, befintligaResultat, alleGolfare]);
+
+  const valdBana = banor?.find(b => b.id === Number(tavlingForm.banaId));
+
+  useEffect(() => {
+    if (!valdBana) return;
+    if (!teeSteg3) setTeeSteg3(valdBana.standardTee || "Blå");
+    if (!crSteg3) setCrSteg3(String(valdBana.kursrating ?? 72));
+    if (!slopeSteg3) setSlopeSteg3(String(valdBana.slope ?? 113));
+    if (!parSteg3) setParSteg3(String(valdBana.par ?? 72));
+  }, [valdBana?.id, teeSteg3, crSteg3, slopeSteg3, parSteg3]);
 
   const inputStyle = { background: "var(--color-green-light)", border: "1px solid rgba(201,162,39,0.3)", borderRadius: "0.375rem", color: "var(--color-cream)", padding: "0.5rem 0.75rem", width: "100%", fontSize: "0.875rem" };
 
@@ -1021,7 +1127,9 @@ function NyTavlingFlode({ editTavlingId, onClose }: { editTavlingId?: number; on
       setDeltagare(stamspelarna.map(g => ({
         golfareId: g.id,
         namn: g.namn,
+        standardHcp: Number(g.standardHandicap ?? roundOne((Number(g.hickoryHandicap ?? 0)) / 1.4)),
         hhcp: Number(g.hickoryHandicap ?? 0),
+        arMedIResultat: true,
         brutto: "",
         countback: [],
       })));
@@ -1045,6 +1153,19 @@ function NyTavlingFlode({ editTavlingId, onClose }: { editTavlingId?: number; on
     onError: () => toast({ title: "Fel", description: "Kunde inte spara resultaten." }),
   });
 
+  const sparaHcpUnderlagMutation = useMutation({
+    mutationFn: ({ tavlingId, data }: { tavlingId: number; data: { hcpTee: string; hcpCr: number; hcpSlope: number; hcpPar: number } }) =>
+      apiRequest("PATCH", `/api/tavlingar/${tavlingId}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tavlingar"] });
+      if (editTavlingId) {
+        queryClient.invalidateQueries({ queryKey: ["/api/tavlingar", editTavlingId] });
+      }
+      toast({ title: "HCP-underlag sparat" });
+    },
+    onError: () => toast({ title: "Fel", description: "Kunde inte spara HCP-underlag." }),
+  });
+
   // Golfare som INTE redan lagts till
   const filtreradeGolfare = (alleGolfare ?? []).filter(g => {
     const ej = deltagare.some(d => d.golfareId === g.id);
@@ -1057,7 +1178,9 @@ function NyTavlingFlode({ editTavlingId, onClose }: { editTavlingId?: number; on
     setDeltagare(prev => [...prev, {
       golfareId: g.id,
       namn: g.namn,
+      standardHcp: Number(g.standardHandicap ?? roundOne((Number(g.hickoryHandicap ?? 0)) / 1.4)),
       hhcp: g.hickoryHandicap ?? 0,
+      arMedIResultat: true,
       brutto: "",
       countback: [],
     }]);
@@ -1076,6 +1199,122 @@ function NyTavlingFlode({ editTavlingId, onClose }: { editTavlingId?: number; on
     setDeltagare(prev => prev.map(d => d.golfareId === id ? { ...d, brutto: val } : d));
   }
 
+  function uppdateraHhcpSteg3(id: number, val: string) {
+    const parsed = Number(val);
+    setDeltagare(prev => prev.map(d => d.golfareId === id ? { ...d, hhcp: Number.isFinite(parsed) ? parsed : 0 } : d));
+  }
+
+  function uppdateraArMedIResultat(id: number, arMedIResultat: boolean) {
+    setDeltagare(prev => prev.map(d => d.golfareId === id ? { ...d, arMedIResultat } : d));
+  }
+
+  function sattAllaArMedIResultat(arMedIResultat: boolean) {
+    setDeltagare(prev => prev.map(d => ({ ...d, arMedIResultat })));
+  }
+
+  const golfareById = new Map((alleGolfare ?? []).map(g => [g.id, g] as const));
+
+  function byggHcpUnderlag() {
+    const cr = Number(String(crSteg3).replace(",", "."));
+    const slope = Number(String(slopeSteg3).replace(",", "."));
+    const par = Number(String(parSteg3).replace(",", "."));
+
+    if (!Number.isFinite(cr) || !Number.isFinite(slope) || !Number.isFinite(par)) return null;
+
+    return {
+      hcpTee: teeSteg3,
+      hcpCr: cr,
+      hcpSlope: Math.round(slope),
+      hcpPar: Math.round(par),
+    };
+  }
+
+  function standardHcpForDeltagare(d: Deltagare): number {
+    if (Number.isFinite(d.standardHcp)) return d.standardHcp;
+    const std = golfareById.get(d.golfareId)?.standardHandicap;
+    if (std != null) return std;
+    return roundOne((d.hhcp ?? 0) / 1.4);
+  }
+
+  function beraknadeSteg3Varden(d: Deltagare): { standardHcp: number; banaHcp: number; hickoryHcp: number } {
+    const standardHcp = standardHcpForDeltagare(d);
+    const cr = Number(String(crSteg3).replace(",", "."));
+    const slope = Number(String(slopeSteg3).replace(",", "."));
+    const par = Number(String(parSteg3).replace(",", "."));
+
+    if (!Number.isFinite(cr) || !Number.isFinite(slope) || !Number.isFinite(par)) {
+      return { standardHcp, banaHcp: standardHcp, hickoryHcp: roundOne(standardHcp * 1.4) };
+    }
+
+    const banaHcp = beraknaBanaHandicap(standardHcp, slope, cr, par);
+    return { standardHcp, banaHcp, hickoryHcp: roundOne(banaHcp * 1.4) };
+  }
+
+  function appliceraBeraknadHhcp() {
+    const cr = Number(String(crSteg3).replace(",", "."));
+    const slope = Number(String(slopeSteg3).replace(",", "."));
+    const par = Number(String(parSteg3).replace(",", "."));
+
+    if (!Number.isFinite(cr) || !Number.isFinite(slope) || !Number.isFinite(par)) {
+      toast({ title: "Fel", description: "Ange giltiga värden för CR, slope och par." });
+      return;
+    }
+
+    setDeltagare(prev => prev.map(d => {
+      if (!d.arMedIResultat) return d;
+      const standardHcp = standardHcpForDeltagare(d);
+      const banaHcp = beraknaBanaHandicap(standardHcp, slope, cr, par);
+      return { ...d, hhcp: roundOne(banaHcp * 1.4) };
+    }));
+
+    toast({ title: "H-HCP uppdaterat", description: `Tee ${teeSteg3} · CR ${cr} · Slope ${slope}` });
+  }
+
+  function sparaHcpUnderlag() {
+    if (!skapadTavlingId) {
+      toast({ title: "Fel", description: "Ingen tävling vald." });
+      return;
+    }
+    const underlag = byggHcpUnderlag();
+    if (!underlag) {
+      toast({ title: "Fel", description: "Ange giltiga värden för CR, slope och par." });
+      return;
+    }
+    sparaHcpUnderlagMutation.mutate({ tavlingId: skapadTavlingId, data: underlag });
+  }
+
+  const visadeDeltagare = [...deltagare].sort((a, b) => {
+    if (sorteringSteg3 === "namn") {
+      return a.namn.localeCompare(b.namn, "sv");
+    }
+
+    if (sorteringSteg3 === "brutto") {
+      const aHar = a.arMedIResultat && a.brutto !== "";
+      const bHar = b.arMedIResultat && b.brutto !== "";
+      if (aHar && bHar) {
+        const diff = Number(a.brutto) - Number(b.brutto);
+        if (diff !== 0) return diff;
+      } else if (aHar !== bHar) {
+        return aHar ? -1 : 1;
+      }
+      return a.namn.localeCompare(b.namn, "sv");
+    }
+
+    const aNetto = a.arMedIResultat && a.brutto !== "" ? roundOne(Number(a.brutto) - a.hhcp) : null;
+    const bNetto = b.arMedIResultat && b.brutto !== "" ? roundOne(Number(b.brutto) - b.hhcp) : null;
+    const aHar = aNetto !== null;
+    const bHar = bNetto !== null;
+
+    if (aHar && bHar) {
+      const diff = aNetto - bNetto;
+      if (diff !== 0) return diff;
+    } else if (aHar !== bHar) {
+      return aHar ? -1 : 1;
+    }
+
+    return a.namn.localeCompare(b.namn, "sv");
+  });
+
   // Beräkna placeringar och kolla om countback behövs
   const nettoPlacer = raknaPlaceringar(deltagare, "netto");
   const bruttoPlacer = raknaPlaceringar(deltagare, "brutto");
@@ -1090,6 +1329,7 @@ function NyTavlingFlode({ editTavlingId, onClose }: { editTavlingId?: number; on
     });
     for (const ids of groups.values()) {
       if (ids.length > 1) {
+        if (typ === "netto") return [];
         // Kolla om de saknar countback
         const saknarCb = ids.filter((id: number) => {
           const d = deltagare.find(x => x.golfareId === id);
@@ -1104,20 +1344,32 @@ function NyTavlingFlode({ editTavlingId, onClose }: { editTavlingId?: number; on
   const likaIBrutto = hittaLika("brutto");
   const likaINetto = hittaLika("netto");
 
-  function sparaAllt() {
+  async function sparaAllt() {
     if (!skapadTavlingId) return;
-    const deltagareMedResultat = deltagare.filter(d => d.brutto !== "");
+
+    const underlag = byggHcpUnderlag();
+    if (underlag) {
+      try {
+        await apiRequest("PATCH", `/api/tavlingar/${skapadTavlingId}`, underlag);
+      } catch {
+        // Fortsätt med resultatsparning även om underlaget inte gick att spara.
+      }
+    }
+
+    const deltagareMedResultat = deltagare.filter(d => d.arMedIResultat && d.brutto !== "");
     const antalDeltagare = deltagareMedResultat.length;
     const resultat = deltagareMedResultat
       .map(d => {
         const brutto = Number(d.brutto);
-        const netto = Math.round(brutto - d.hhcp);
+        const netto = roundOne(brutto - d.hhcp);
         const nettoPlats = nettoPlacer.get(d.golfareId) ?? 99;
         const bruttoPlats = bruttoPlacer.get(d.golfareId) ?? 99;
         return {
           golfareId: d.golfareId,
           bruttoscore: brutto,
           nettoscore: netto,
+          standardHcpVid: d.standardHcp,
+          countback: d.countback,
           hickoryHandicapVid: d.hhcp,
           placering: nettoPlats,
           orderOfMeritPoang: oomPoang(nettoPlats, antalDeltagare),
@@ -1155,7 +1407,7 @@ function NyTavlingFlode({ editTavlingId, onClose }: { editTavlingId?: number; on
     const unmatchedRows = importPreview.filter(p => !p.matchedGolfare);
     
     // Skapa nya golfare i databasen för ej matchade
-    const nyaGolfare: Golfare[] = [];
+    const nyaGolfare: Array<{ golfare: Golfare; standardHcp: number }> = [];
     for (const row of unmatchedRows) {
       try {
         const res = await apiRequest("POST", "/api/golfare", {
@@ -1166,7 +1418,7 @@ function NyTavlingFlode({ editTavlingId, onClose }: { editTavlingId?: number; on
           stamspelare: false,
         });
         const nyGolfare: Golfare = await res.json();
-        nyaGolfare.push(nyGolfare);
+        nyaGolfare.push({ golfare: nyGolfare, standardHcp: row.hcp });
       } catch (e) {
         console.error("Kunde inte skapa golfare:", row.namn, e);
       }
@@ -1177,14 +1429,18 @@ function NyTavlingFlode({ editTavlingId, onClose }: { editTavlingId?: number; on
       ...matchedRows.map(p => ({
         golfareId: p.matchedGolfare!.id,
         namn: p.matchedGolfare!.namn,
-        hhcp: Number(p.matchedGolfare!.hickoryHandicap ?? 0),
+        standardHcp: p.hcp,
+        hhcp: roundOne(p.hcp * 1.4),
+        arMedIResultat: true,
         brutto: "",
         countback: [],
       })),
-      ...nyaGolfare.map(g => ({
-        golfareId: g.id,
-        namn: g.namn,
-        hhcp: Number(g.hickoryHandicap ?? 0),
+      ...nyaGolfare.map(entry => ({
+        golfareId: entry.golfare.id,
+        namn: entry.golfare.namn,
+        standardHcp: entry.standardHcp,
+        hhcp: roundOne(entry.standardHcp * 1.4),
+        arMedIResultat: true,
         brutto: "",
         countback: [],
       })),
@@ -1425,7 +1681,58 @@ function NyTavlingFlode({ editTavlingId, onClose }: { editTavlingId?: number; on
         <div>
           <div className="card-vintage p-5 mb-4">
             <h2 className="heading-display text-base mb-1">Steg 3 — Resultat</h2>
-            <p className="text-xs" style={{ color: "var(--color-cream-muted)" }}>Ange bruttoscore. Netto räknas automatiskt. Placeringar beräknas när du sparar.</p>
+            <p className="text-xs" style={{ color: "var(--color-cream-muted)" }}>Sätt tee/CR/slope/par för beräkning av H-HCP och ange sedan bruttoscore manuellt. Vid lika brutto används countback, medan netto avgörs med decimaler.</p>
+          </div>
+
+          <div className="card-vintage p-5 mb-4">
+            <h3 className="heading-display text-sm mb-3">HCP-underlag</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-3">
+              <select
+                style={inputStyle}
+                value={teeSteg3}
+                onChange={e => setTeeSteg3(e.target.value)}
+              >
+                {TEE_PRESETS.map(tee => <option key={tee} value={tee}>{tee}</option>)}
+              </select>
+              <input
+                style={inputStyle}
+                value={crSteg3}
+                onChange={e => setCrSteg3(e.target.value)}
+                placeholder="CR"
+              />
+              <input
+                style={inputStyle}
+                value={slopeSteg3}
+                onChange={e => setSlopeSteg3(e.target.value)}
+                placeholder="Slope"
+              />
+              <input
+                style={inputStyle}
+                value={parSteg3}
+                onChange={e => setParSteg3(e.target.value)}
+                placeholder="Par"
+              />
+              <button
+                onClick={appliceraBeraknadHhcp}
+                className="px-3 py-2 rounded text-sm font-bold"
+                style={{ background: "var(--color-gold)", color: "var(--color-green-dark)" }}
+              >
+                Beräkna H-HCP
+              </button>
+            </div>
+            <div className="flex gap-2 mb-3">
+              <button
+                onClick={sparaHcpUnderlag}
+                disabled={sparaHcpUnderlagMutation.isPending}
+                className="px-3 py-2 rounded text-sm font-bold"
+                style={{ background: "rgba(201,162,39,0.2)", color: "var(--color-gold)", border: "1px solid rgba(201,162,39,0.35)" }}
+              >
+                {sparaHcpUnderlagMutation.isPending ? "Sparar underlag..." : "Spara underlag på tävlingen"}
+              </button>
+            </div>
+            <p className="text-xs" style={{ color: "var(--color-cream-muted)" }}>
+              Formel: Bana-HCP = std-HCP * (slope / 113) + (CR - par), därefter H-HCP = Bana-HCP * 1,4.
+            </p>
           </div>
 
           {/* Countback-varningar */}
@@ -1442,21 +1749,45 @@ function NyTavlingFlode({ editTavlingId, onClose }: { editTavlingId?: number; on
           )}
           {likaINetto.length > 1 && (
             <div className="mb-3 p-3 rounded text-sm" style={{ background: "rgba(201,162,39,0.08)", border: "1px solid rgba(201,162,39,0.3)", color: "var(--color-gold)" }}>
-              Lika nettoscore — countback behövs för:{" "}
-              <strong>{likaINetto.map(id => deltagare.find(d => d.golfareId === id)?.namn).join(", ")}</strong>
-              <button onClick={() => setCountbackModal({ ids: likaINetto, typ: "netto" })}
-                className="ml-3 px-2 py-0.5 rounded text-xs font-bold"
-                style={{ background: "var(--color-gold)", color: "var(--color-green-dark)" }}>
-                Ange sista 9 hål
-              </button>
+              Lika netto efter avrundning visas tillfälligt i tabellen, men placering för netto avgörs av decimalnetto (ej countback).
             </div>
           )}
+
+          <div className="flex gap-2 mb-3">
+            <button
+              onClick={() => sattAllaArMedIResultat(true)}
+              className="px-3 py-2 rounded text-xs font-bold"
+              style={{ background: "rgba(201,162,39,0.2)", color: "var(--color-gold)", border: "1px solid rgba(201,162,39,0.35)" }}
+            >
+              Markera alla med
+            </button>
+            <button
+              onClick={() => sattAllaArMedIResultat(false)}
+              className="px-3 py-2 rounded text-xs font-bold"
+              style={{ background: "rgba(255,255,255,0.06)", color: "var(--color-cream-muted)", border: "1px solid rgba(201,162,39,0.2)" }}
+            >
+              Avmarkera alla
+            </button>
+            <select
+              value={sorteringSteg3}
+              onChange={e => setSorteringSteg3(e.target.value as "namn" | "brutto" | "netto")}
+              className="ml-auto rounded px-2 py-1 text-xs"
+              style={{ background: "var(--color-green-light)", border: "1px solid rgba(201,162,39,0.3)", color: "var(--color-cream)" }}
+            >
+              <option value="namn">Sortera: A-Ö</option>
+              <option value="brutto">Sortera: Brutto (lägst först)</option>
+              <option value="netto">Sortera: Netto (lägst först)</option>
+            </select>
+          </div>
 
           <div className="card-vintage overflow-hidden mb-4">
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ borderBottom: "1px solid rgba(201,162,39,0.2)", background: "rgba(0,0,0,0.2)" }}>
                   <th className="text-left px-4 py-2 text-xs font-semibold" style={{ color: "var(--color-gold)" }}>Golfare</th>
+                  <th className="text-center px-3 py-2 text-xs font-semibold" style={{ color: "var(--color-gold)" }}>Med</th>
+                  <th className="text-right px-3 py-2 text-xs font-semibold" style={{ color: "var(--color-gold)" }}>Std HCP</th>
+                  <th className="text-right px-3 py-2 text-xs font-semibold hidden sm:table-cell" style={{ color: "var(--color-gold)" }}>Bana-HCP</th>
                   <th className="text-right px-3 py-2 text-xs font-semibold" style={{ color: "var(--color-gold)" }}>H-HCP</th>
                   <th className="text-right px-3 py-2 text-xs font-semibold" style={{ color: "var(--color-gold)" }}>Brutto</th>
                   <th className="text-right px-3 py-2 text-xs font-semibold" style={{ color: "var(--color-gold)" }}>Netto</th>
@@ -1465,24 +1796,49 @@ function NyTavlingFlode({ editTavlingId, onClose }: { editTavlingId?: number; on
                 </tr>
               </thead>
               <tbody>
-                {deltagare.map(d => {
+                {visadeDeltagare.map(d => {
+                  const beraknat = beraknadeSteg3Varden(d);
                   const brutto = Number(d.brutto);
-                  const netto = d.brutto !== "" ? Math.round(brutto - d.hhcp) : null;
+                  const netto = d.arMedIResultat && d.brutto !== "" ? roundOne(brutto - d.hhcp) : null;
                   const nPlats = nettoPlacer.get(d.golfareId);
                   const bPlats = bruttoPlacer.get(d.golfareId);
+                  const standardHcpOkand = arMisstanktFallbackStandardHcp(beraknat.standardHcp, d.hhcp);
                   return (
                     <tr key={d.golfareId} style={{ borderBottom: "1px solid rgba(201,162,39,0.06)" }}>
-                      <td className="px-4 py-2" style={{ color: "var(--color-cream)" }}>{d.namn}</td>
-                      <td className="px-3 py-2 text-right font-mono text-xs" style={{ color: "var(--color-cream-muted)" }}>{d.hhcp}</td>
+                      <td className="px-4 py-2" style={{ color: d.arMedIResultat ? "var(--color-cream)" : "var(--color-cream-muted)" }}>{d.namn}</td>
+                      <td className="px-3 py-2 text-center">
+                        <input
+                          type="checkbox"
+                          checked={d.arMedIResultat}
+                          onChange={e => uppdateraArMedIResultat(d.golfareId, e.target.checked)}
+                          className="accent-amber-400 w-4 h-4"
+                        />
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono text-xs" style={{ color: "var(--color-cream-muted)" }} title={standardHcpOkand ? "Historiskt fallback-värde" : undefined}>
+                        {standardHcpOkand ? "okänd" : beraknat.standardHcp.toFixed(1)}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono text-xs hidden sm:table-cell" style={{ color: "var(--color-cream-muted)" }}>{beraknat.banaHcp.toFixed(1)}</td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={d.hhcp}
+                          onChange={e => uppdateraHhcpSteg3(d.golfareId, e.target.value)}
+                          disabled={!d.arMedIResultat}
+                          className="text-right rounded px-2 py-1 text-sm w-20 ml-auto block font-mono"
+                          style={{ background: "var(--color-green-light)", border: "1px solid rgba(201,162,39,0.2)", color: "var(--color-cream)" }}
+                        />
+                      </td>
                       <td className="px-3 py-2">
                         <input type="number" value={d.brutto}
                           onChange={e => uppdateraBrutto(d.golfareId, e.target.value)}
+                          disabled={!d.arMedIResultat}
                           placeholder="–"
                           className="text-right rounded px-2 py-1 text-sm w-16 ml-auto block font-mono"
                           style={{ background: "var(--color-green-light)", border: "1px solid rgba(201,162,39,0.2)", color: "var(--color-cream)" }} />
                       </td>
                       <td className="px-3 py-2 text-right font-mono text-sm font-bold" style={{ color: netto !== null ? "var(--color-cream)" : "var(--color-cream-muted)" }}>
-                        {netto ?? "–"}
+                        {netto !== null ? netto.toFixed(1) : "–"}
                       </td>
                       <td className="px-3 py-2 text-right font-mono text-xs hidden sm:table-cell" style={{ color: "var(--color-gold)" }}>
                         {nPlats !== undefined ? `${nPlats}.` : "–"}
@@ -1501,10 +1857,10 @@ function NyTavlingFlode({ editTavlingId, onClose }: { editTavlingId?: number; on
             <button onClick={() => setSteg(2)} className="px-4 py-2 rounded text-sm" style={{ background: "rgba(255,255,255,0.06)", color: "var(--color-cream-muted)" }}>← Tillbaka</button>
             <button
               onClick={sparaAllt}
-              disabled={deltagare.filter(d => d.brutto !== "").length === 0 || sparaResultatMutation.isPending}
+              disabled={deltagare.filter(d => d.arMedIResultat && d.brutto !== "").length === 0 || sparaResultatMutation.isPending}
               className="px-6 py-2 rounded font-bold text-sm"
               style={{ background: "var(--color-gold)", color: "var(--color-green-dark)" }}>
-              {sparaResultatMutation.isPending ? "Sparar..." : `Spara resultat (${deltagare.filter(d => d.brutto !== "").length} st) →`}
+              {sparaResultatMutation.isPending ? "Sparar..." : `Spara resultat (${deltagare.filter(d => d.arMedIResultat && d.brutto !== "").length} st) →`}
             </button>
           </div>
 

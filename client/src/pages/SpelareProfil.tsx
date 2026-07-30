@@ -78,7 +78,7 @@ export default function SpelareProfil() {
   const totalOomPoang = sumBest(kronologisk.map(r => r.resultat.orderOfMeritPoang ?? 0), OOM_BEST_COUNT);
   const totalBruttoPoang = sumBest(kronologisk.map(r => r.resultat.bruttoOmPoang ?? 0), OOM_BEST_COUNT);
 
-  // Data till grafen
+  // Data till grafer
   const grafData = kronologisk.map((r, i) => {
     const kortNamn = r.tavling.namn.replace(/hickory|invitational|open|classic/gi, "").trim().split(" ")[0];
     return {
@@ -94,6 +94,18 @@ export default function SpelareProfil() {
       netto: r.resultat.nettoscore,
     };
   });
+
+  const formGrafData = grafData.map((r) => ({
+    tavling: r.tavling,
+    fullNamn: r.fullNamn,
+    datum: r.datum,
+    netto: r.netto != null ? Number(r.netto.toFixed(1)) : null,
+    brutto: r.brutto ?? null,
+  }));
+
+  const formPunkter = formGrafData.filter((r) => r.netto != null || r.brutto != null).length;
+  const harNettoSerie = formGrafData.some((r) => r.netto != null);
+  const harBruttoSerie = formGrafData.some((r) => r.brutto != null);
 
 
   return (
@@ -147,6 +159,85 @@ export default function SpelareProfil() {
           </div>
         </div>
       </div>
+
+      {/* Formkurva */}
+      {formPunkter > 0 && (
+        <div className="card-vintage p-5 mb-6">
+          <h2 className="heading-display text-base mb-1">Formkurva per tävling</h2>
+          <p className="text-xs mb-4" style={{ color: "var(--color-cream-muted)" }}>
+            Utveckling över tid. Lägre värde är bättre.
+          </p>
+
+          {formPunkter < 2 ? (
+            <div className="text-xs" style={{ color: "var(--color-cream-muted)" }}>
+              För få mätpunkter för trendgraf ännu.
+            </div>
+          ) : (
+            <>
+              <ResponsiveContainer width="100%" height={260}>
+                <LineChart
+                  data={formGrafData}
+                  margin={{ top: 8, right: 16, left: -10, bottom: 8 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(201,162,39,0.1)" />
+                  <XAxis
+                    dataKey="tavling"
+                    tick={{ fill: "#a89060", fontSize: 11 }}
+                    axisLine={{ stroke: "rgba(201,162,39,0.2)" }}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    tick={{ fill: "#a89060", fontSize: 11 }}
+                    axisLine={{ stroke: "rgba(201,162,39,0.2)" }}
+                    tickLine={false}
+                    allowDecimals
+                    label={{ value: "Slag", angle: -90, position: "insideLeft", fill: "#a89060", fontSize: 10, dy: 24 }}
+                  />
+                  <Tooltip
+                    contentStyle={{ background: "#1A3322", border: "1px solid rgba(201,162,39,0.4)", borderRadius: "6px", fontSize: 12 }}
+                    labelStyle={{ color: "#C9A227", fontWeight: "bold", marginBottom: 4 }}
+                    itemStyle={{ color: "#e8dcc8" }}
+                    formatter={(value: number | string, name: string) => {
+                      if (value == null) return ["–", name];
+                      if (name === "Netto") return [Number(value).toFixed(1), name];
+                      return [value, name];
+                    }}
+                    labelFormatter={(_, payload) => {
+                      const p = payload?.[0]?.payload;
+                      return p ? `${p.fullNamn} (${p.datum})` : "";
+                    }}
+                  />
+                  {harNettoSerie && (
+                    <Line
+                      type="monotone"
+                      dataKey="netto"
+                      name="Netto"
+                      stroke="#C9A227"
+                      strokeWidth={2.5}
+                      dot={{ fill: "#C9A227", r: 4, strokeWidth: 0 }}
+                    />
+                  )}
+                  {harBruttoSerie && (
+                    <Line
+                      type="monotone"
+                      dataKey="brutto"
+                      name="Brutto"
+                      stroke="#7ec8a0"
+                      strokeWidth={2}
+                      dot={{ fill: "#7ec8a0", r: 3, strokeWidth: 0 }}
+                      strokeDasharray="6 3"
+                    />
+                  )}
+                </LineChart>
+              </ResponsiveContainer>
+              <div className="flex gap-5 mt-3 text-xs" style={{ color: "var(--color-cream-muted)" }}>
+                {harNettoSerie && <span><span style={{ color: "#C9A227" }}>——</span> Netto</span>}
+                {harBruttoSerie && <span><span style={{ color: "#7ec8a0" }}>- - -</span> Brutto</span>}
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {/* OoM-rang-graf */}
       {oomHistorik && oomHistorik.length > 0 && (

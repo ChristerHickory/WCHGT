@@ -67,6 +67,10 @@ export const tavlingar = sqliteTable("tavlingar", {
   avslutad: integer("avslutad", { mode: "boolean" }).notNull().default(false),
   parOverride: text("par_override"), // JSON array — override banans par om satt
   anmalningsLank: text("anmalnings_lank"), // Extern länk till tävling (t.ex Min Golf)
+  hcpTee: text("hcp_tee"),
+  hcpCr: real("hcp_cr"),
+  hcpSlope: integer("hcp_slope"),
+  hcpPar: integer("hcp_par"),
 });
 
 export const insertTavlingSchema = createInsertSchema(tavlingar).omit({ id: true });
@@ -78,6 +82,9 @@ export const tavlingsresultat = sqliteTable("tavlingsresultat", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   tavlingId: integer("tavling_id").notNull().references(() => tavlingar.id),
   golfareId: integer("golfare_id").notNull().references(() => golfare.id),
+  golfareNamnVid: text("golfare_namn_vid"),
+  standardHcpVid: real("standard_hcp_vid"),
+  countbackVid: text("countback_vid"),
   bruttoscore: integer("bruttoscore").notNull(),
   nettoscore: real("nettoscore"),
   hickoryHandicapVid: real("hickory_handicap_vid").notNull(),

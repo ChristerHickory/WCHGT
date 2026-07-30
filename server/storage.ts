@@ -63,12 +63,19 @@ sqlite.exec(`
     ar_order_of_merit INTEGER NOT NULL DEFAULT 0,
     avslutad INTEGER NOT NULL DEFAULT 0,
     par_override TEXT,
+    hcp_tee TEXT,
+    hcp_cr REAL,
+    hcp_slope INTEGER,
+    hcp_par INTEGER,
     FOREIGN KEY (bana_id) REFERENCES banor(id)
   );
   CREATE TABLE IF NOT EXISTS tavlingsresultat (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tavling_id INTEGER NOT NULL,
     golfare_id INTEGER NOT NULL,
+    golfare_namn_vid TEXT,
+    standard_hcp_vid REAL,
+    countback_vid TEXT,
     bruttoscore INTEGER NOT NULL,
     nettoscore REAL,
     hickory_handicap_vid REAL NOT NULL,
@@ -99,8 +106,53 @@ try { sqlite.exec("ALTER TABLE banor ADD COLUMN delbana TEXT"); } catch(e) {}
 try { sqlite.exec("ALTER TABLE banor ADD COLUMN standard_tee TEXT NOT NULL DEFAULT 'Blå'"); } catch(e) {}
 try { sqlite.exec("ALTER TABLE banor ADD COLUMN par_per_hal TEXT"); } catch(e) {}
 try { sqlite.exec("ALTER TABLE tavlingar ADD COLUMN par_override TEXT"); } catch(e) {}
+try { sqlite.exec("ALTER TABLE tavlingar ADD COLUMN hcp_tee TEXT"); } catch(e) {}
+try { sqlite.exec("ALTER TABLE tavlingar ADD COLUMN hcp_cr REAL"); } catch(e) {}
+try { sqlite.exec("ALTER TABLE tavlingar ADD COLUMN hcp_slope INTEGER"); } catch(e) {}
+try { sqlite.exec("ALTER TABLE tavlingar ADD COLUMN hcp_par INTEGER"); } catch(e) {}
 try { sqlite.exec("ALTER TABLE tavlingsresultat ADD COLUMN brutto_placering INTEGER"); } catch(e) {}
 try { sqlite.exec("ALTER TABLE tavlingsresultat ADD COLUMN brutto_om_poang INTEGER"); } catch(e) {}
+try { sqlite.exec("ALTER TABLE tavlingsresultat ADD COLUMN golfare_namn_vid TEXT"); } catch(e) {}
+try { sqlite.exec("ALTER TABLE tavlingsresultat ADD COLUMN standard_hcp_vid REAL"); } catch(e) {}
+try { sqlite.exec("ALTER TABLE tavlingsresultat ADD COLUMN countback_vid TEXT"); } catch(e) {}
+
+try {
+  const resultatRows = db.select({ id: tavlingsresultat.id, golfareId: tavlingsresultat.golfareId, golfareNamnVid: tavlingsresultat.golfareNamnVid }).from(tavlingsresultat).all();
+  const tx = sqlite.transaction(() => {
+    for (const row of resultatRows) {
+      if ((row.golfareNamnVid ?? "").trim()) continue;
+      const g = db.select({ namn: golfare.namn }).from(golfare).where(eq(golfare.id, row.golfareId)).get();
+      if (!g?.namn) continue;
+      db.update(tavlingsresultat)
+        .set({ golfareNamnVid: g.namn })
+        .where(eq(tavlingsresultat.id, row.id))
+        .run();
+    }
+  });
+  tx();
+} catch (e) {}
+
+try {
+  const resultatRows = db.select({
+    id: tavlingsresultat.id,
+    golfareId: tavlingsresultat.golfareId,
+    standardHcpVid: tavlingsresultat.standardHcpVid,
+    hickoryHandicapVid: tavlingsresultat.hickoryHandicapVid,
+  }).from(tavlingsresultat).all();
+
+  const tx = sqlite.transaction(() => {
+    for (const row of resultatRows) {
+      if (row.standardHcpVid != null) continue;
+      const g = db.select({ standardHandicap: golfare.standardHandicap }).from(golfare).where(eq(golfare.id, row.golfareId)).get();
+      const fallbackStd = g?.standardHandicap ?? Math.round((Number(row.hickoryHandicapVid ?? 0) / 1.4) * 10) / 10;
+      db.update(tavlingsresultat)
+        .set({ standardHcpVid: fallbackStd })
+        .where(eq(tavlingsresultat.id, row.id))
+        .run();
+    }
+  });
+  tx();
+} catch (e) {}
 
 function formatBanaNamn(klubb?: string | null, delbana?: string | null, fallbackNamn?: string | null): string {
   const klubbTrim = (klubb ?? "").trim();
@@ -446,10 +498,14 @@ export const storage: IStorage = {
   },
 
   createResultat: (data) => {
+    const g = db.select({ namn: golfare.namn, standardHandicap: golfare.standardHandicap }).from(golfare).where(eq(golfare.id, data.golfareId)).get();
+    const dataAny = data as InsertTavlingsresultat & { standardHcpVid?: number | null; countbackVid?: string | null; countback?: number[] | null };
     const bana = data.nettoscore ? null : db.select().from(banor)
       .where(eq(banor.id, db.select().from(tavlingar).where(eq(tavlingar.id, data.tavlingId)).get()?.banaId ?? 0)).get();
     const nettoscore = data.nettoscore ?? (bana ? data.bruttoscore - Math.round(data.hickoryHandicapVid * (bana.slope / 113)) : null);
-    return db.insert(tavlingsresultat).values({ ...data, nettoscore }).returning().get();
+    const standardHcpVid = dataAny.standardHcpVid ?? g?.standardHandicap ?? Math.round((Number(data.hickoryHandicapVid ?? 0) / 1.4) * 10) / 10;
+    const countbackVid = dataAny.countbackVid ?? (Array.isArray(dataAny.countback) ? JSON.stringify(dataAny.countback) : null);
+    return db.insert(tavlingsresultat).values({ ...data, golfareNamnVid: g?.namn ?? null, standardHcpVid, countbackVid, nettoscore }).returning().get();
   },
 
   bulkSaveResultat: (tavlingId, resultat) => {
@@ -461,9 +517,15 @@ export const storage: IStorage = {
     const saved: Tavlingsresultat[] = [];
     const tav = db.select().from(tavlingar).where(eq(tavlingar.id, tavlingId)).get();
     for (const r of resultat) {
+      const g = db.select({ namn: golfare.namn, standardHandicap: golfare.standardHandicap }).from(golfare).where(eq(golfare.id, r.golfareId)).get();
+      const standardHcpVid = r.standardHcpVid ?? g?.standardHandicap ?? Math.round((Number(r.hickoryHandicapVid ?? 0) / 1.4) * 10) / 10;
+      const countbackVid = Array.isArray(r.countback) ? JSON.stringify(r.countback) : (typeof r.countbackVid === "string" ? r.countbackVid : null);
       const row = db.insert(tavlingsresultat).values({
         tavlingId,
         golfareId: r.golfareId,
+        golfareNamnVid: g?.namn ?? null,
+        standardHcpVid,
+        countbackVid,
         bruttoscore: r.bruttoscore,
         nettoscore: r.nettoscore,
         hickoryHandicapVid: r.hickoryHandicapVid,
