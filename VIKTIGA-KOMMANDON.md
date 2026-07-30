@@ -52,3 +52,23 @@ node -e "const Database=require('better-sqlite3'); const db=new Database('data.d
 ## 9) Tips
 - Kör alltid kommandon från projektroten.
 - Ta backup på data.db innan större importer om du är osäker.
+
+## 10) Perplexity-uppdatering (snabbflöde)
+Kör i ordning:
+
+npm install
+npm run check
+npm run build
+
+Vid schemaändring:
+
+npm run db:push
+
+Publicera:
+
+git add .
+git commit -m "Release: Perplexity update"
+git push origin main
+
+Detaljerad guide finns i filen:
+PERPLEXITY-UPPDATERING.md
